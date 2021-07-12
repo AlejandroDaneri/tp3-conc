@@ -41,9 +41,9 @@ impl Client {
         });
 
         self.process_messages(sender, receiver);
-        
+
         listener_handle.join().unwrap()?;
-        
+
         Ok(())
     }
 
@@ -70,13 +70,14 @@ impl Client {
 
     fn listen_in_range(port_from: u16, port_to: u16) -> io::Result<TcpListener> {
         let mask = [127, 0, 0, 1];
+        let mut addrs = vec![];
         for port in port_from..port_to {
-            let addr = SocketAddr::from((mask, port));
-            let listener = TcpListener::bind(&addr);
-            if listener.is_ok() {
-                return listener;
-            }
+            addrs.push(SocketAddr::from((mask, port)))
         }
-        Err(io::Error::new(io::ErrorKind::Other, "Pool not available"))
+
+        match TcpListener::bind(&addrs[..]) {
+            Ok(listener) => Ok(listener),
+            Err(_err) => Err(io::Error::new(io::ErrorKind::Other, "Pool not available")),
+        }
     }
 }
