@@ -22,4 +22,6 @@ pub enum ClientEvent {
     ConnectionError {
         connection_id: usize,
     },
+    OkMessage {},
+    CoordinatorMessage {},
 }

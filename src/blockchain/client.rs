@@ -6,10 +6,9 @@ use std::rc::Rc;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::SystemTime;
 
 use super::blockchain::Blockchain;
-use super::blockchain::Transaction;
+
 use super::client_event::ClientEvent;
 use super::lock::{CentralizedLock, Lock};
 use super::peer::Peer;
@@ -28,7 +27,7 @@ impl Client {
         Client {
             id,
             connected_peers: vec![],
-            lock: CentralizedLock::new(),
+            lock: CentralizedLock::new(id, TcpStream::connect("127.0.0.1:0000").unwrap()), // si lo definimos aca necesitamos el coordinatdor en este momento
             blockchain: Blockchain::new(),
             leader: 0,
         }
@@ -64,6 +63,7 @@ impl Client {
 
     fn process_messages(&mut self, sender: Sender<ClientEvent>, receiver: Receiver<ClientEvent>) {
         let mut cur_id = 0;
+        //proceso mensajes que me llegan
         while let Ok(message) = receiver.recv() {
             match message {
                 ClientEvent::Connection { stream } => {
@@ -73,34 +73,46 @@ impl Client {
                     self.connected_peers.push(peer);
                 }
                 ClientEvent::ReadBlockchainRequest {} => {
-                    let stream_cell : Rc<RefCell<TcpStream>> = self.get_stream(self.id);
-                    let mut stream = stream_cell.borrow_mut();
-                    self.lock.acquire(true, &mut stream);
-                    self.blockchain.refresh(); // pedir la nueva blockchain y guardarla
+                    // si me llega esto deberia ser lider
+                    // soy lider?
+                    // no, ToDo (error?, redirigirlo al lider?)
+                    // si ->
+                    let coord_stream_cell: Rc<RefCell<TcpStream>> = self.get_stream(self.id);
+                    let mut coord_stream = coord_stream_cell.borrow_mut();
+                    self.lock.acquire(true, &mut coord_stream); // <- esto deberia ser lock local, porque soy lider
+                    self.blockchain.refresh(); // aca seria devolver la blockchain en vez de esto??
                                                // println!(blockchain);
-                    self.lock.release(&mut stream);
+                    self.lock.release(&mut coord_stream); // <- esto deberia ser lock local, porque soy lider. Extrapolar con los demas msjs
                 }
                 ClientEvent::WriteBlockchainRequest { transaction } => {
-                    let stream_cell : Rc<RefCell<TcpStream>> = self.get_stream(self.id);
-                    let mut stream = stream_cell.borrow_mut();
-                    self.lock.acquire(false, &mut stream);
+                    // si me llega esto deberia ser lider
+                    // soy lider?
+                    // no, ToDo (error?, redirigirlo al lider?)
+                    // si ->
+                    let coord_stream_cell: Rc<RefCell<TcpStream>> = self.get_stream(self.id);
+                    let mut coord_stream = coord_stream_cell.borrow_mut();
+                    self.lock.acquire(false, &mut coord_stream);
                     self.blockchain.refresh();
-                    let modifications = self.blockchain.add_transaction(transaction);
+                    let _modifications = self.blockchain.add_transaction(transaction);
                     self.send_modifications(0, 0); //TODO: ver si va
-                    self.lock.release(&mut stream);
+                    self.lock.release(&mut coord_stream);
                 }
                 ClientEvent::LockRequest {
                     read_only,
                     request_id,
                 } => {
-                    let stream_cell : Rc<RefCell<TcpStream>> = self.get_stream(request_id);
-                    let mut stream = stream_cell.borrow_mut();
-                    let result = self.lock.acquire(read_only, &mut stream);
+                    // si me llega esto deberia ser lider
+                    // soy lider?
+                    // no, ToDo (error?)
+                    // si ->
+                    let coord_stream_cell: Rc<RefCell<TcpStream>> = self.get_stream(request_id);
+                    let mut coord_stream = coord_stream_cell.borrow_mut();
+                    let _result = self.lock.acquire(read_only, &mut coord_stream);
                     self.send_result(request_id, 0);
                 }
                 ClientEvent::LeaderElectionRequest {
-                    request_id,
-                    timestamp,
+                    request_id: _,
+                    timestamp: _,
                 } => {
                     self.send_leader_request(0, 0);
                     self.leader = self.get_leader_id(0, 0);
@@ -109,8 +121,15 @@ impl Client {
                         self.notify_minions(0, 0);
                     }
                 }
-                ClientEvent::ConnectionError { connection_id } => {
+                ClientEvent::ConnectionError { connection_id: _ } => {
                     //self.connected_peers.filter_by_id(id);
+                }
+                ClientEvent::OkMessage {} => {
+                    // hay alguien mayor que esta vivo, o sea no voy a ser lider
+                }
+                ClientEvent::CoordinatorMessage {} => {
+                    //no me toca ser lider esta vez :(
+                    //aca deberia setear todas las comunicaciones al nuevo coordinador
                 }
             }
         }
@@ -145,11 +164,14 @@ impl Client {
         peer.stream.clone()
     }
 
-    fn send_result(&mut self, _id: u32, result: u32) {}
-    fn send_modifications(&mut self, _id: u32, result: u32) {}
-    fn notify_minions(&mut self, _id: u32, result: u32) {}
-    fn send_leader_request(&mut self, _id: u32, result: u32) {}
-    fn get_leader_id(&mut self, _id: u32, result: u32) -> u32 {
+    fn send_result(&mut self, _id: u32, _result: u32) {}
+    fn send_modifications(&mut self, _id: u32, _result: u32) {}
+
+    fn notify_minions(&mut self, _id: u32, _result: u32) {
+        //enviar a todos mi stream y/o canal para que me pidan lock y esas cosas
+    }
+    fn send_leader_request(&mut self, _id: u32, _result: u32) {}
+    fn get_leader_id(&mut self, _id: u32, _result: u32) -> u32 {
         return 0;
     }
 }

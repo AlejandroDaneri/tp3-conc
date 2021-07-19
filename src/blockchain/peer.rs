@@ -1,6 +1,6 @@
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::net::TcpStream;
+use std::rc::Rc;
 use std::sync::mpsc::Sender;
 use std::thread;
 
@@ -19,7 +19,9 @@ impl Peer {
         let join_handler = thread::spawn(move || {
             let _id = 0;
             Peer::recv_messages(stream_clone);
-            sender.send(ClientEvent::ConnectionError { connection_id: 0 });
+            sender
+                .send(ClientEvent::ConnectionError { connection_id: 0 })
+                .unwrap();
         });
 
         Peer {

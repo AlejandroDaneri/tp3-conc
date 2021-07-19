@@ -9,7 +9,7 @@ impl Blockchain {
         Self {}
     }
 
-    pub fn add_transaction(&mut self, transaction: Transaction) {}
+    pub fn add_transaction(&mut self, _transaction: Transaction) {}
 
     pub fn refresh(&mut self) {}
 
