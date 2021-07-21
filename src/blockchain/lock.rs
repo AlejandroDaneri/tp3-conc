@@ -4,9 +4,11 @@ use std::{
 };
 
 pub trait Lock {
-    fn acquire(&mut self, read_only: bool, stream: &mut TcpStream);
+    // fn acquire(&mut self, read_only: bool, stream: &mut TcpStream); para que compile
+    fn acquire(&mut self);
 
-    fn release(&mut self, stream: &mut TcpStream);
+    // fn release(&mut self, stream: &mut TcpStream); para que compile
+    fn release(&mut self);
 }
 
 #[derive(Debug)]
@@ -40,7 +42,7 @@ const RELEASE_MSG: &str = "release\n";
 
 impl CentralizedLock {
     pub fn new(id: u32, coordinator_stream: TcpStream) -> CentralizedLock {
-        let mut newLock = CentralizedLock {
+        let mut new_lock = CentralizedLock {
             coordinator_stream: {
                 match coordinator_stream.try_clone() {
                     Ok(stream) => stream,
@@ -50,10 +52,10 @@ impl CentralizedLock {
             stream_reader: BufReader::new(coordinator_stream),
         };
 
-        newLock
+        new_lock
             .coordinator_stream
             .write_all((id.to_string() + "\n").as_bytes());
 
-        newLock
+        new_lock
     }
 }

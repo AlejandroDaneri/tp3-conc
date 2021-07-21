@@ -1,20 +1,18 @@
 use std::net::TcpStream;
 use std::time::SystemTime;
 
-use super::blockchain::Transaction;
-
 pub enum ClientEvent {
     Connection {
         stream: TcpStream,
     },
     ReadBlockchainRequest {},
     WriteBlockchainRequest {
-        transaction: Transaction,
+        // transaction: Transaction,
     },
-    LockRequest {
-        read_only: bool,
-        request_id: u32,
-    },
+    // LockRequest {
+    //     read_only: bool,
+    //     request_id: u32,
+    // },
     LeaderElectionRequest {
         request_id: u32,
         timestamp: SystemTime,
@@ -23,5 +21,11 @@ pub enum ClientEvent {
         connection_id: usize,
     },
     OkMessage {},
-    CoordinatorMessage {},
+    CoordinatorMessage {
+        new_leader_id: u32,
+    },
+    ReadBlockchainResponse {
+        approved: bool, //cambiar por blockchain
+    },
+    // ReleaseLock {},
 }

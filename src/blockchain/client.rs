@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use std::net::{TcpListener, TcpStream};
 use std::rc::Rc;
 use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 
@@ -12,12 +13,14 @@ use super::blockchain::Blockchain;
 use super::client_event::ClientEvent;
 use super::lock::CentralizedLock;
 use super::peer::Peer;
+use super::sync_event::SyncEvent;
 
 #[derive(Debug)]
 pub struct Client {
     id: u32,
     connected_peers: Vec<Peer>,
-    lock: Option<CentralizedLock>,
+    centralized_lock: Option<CentralizedLock>,
+    local_lock: Option<Arc<Mutex<bool>>>,
     blockchain: Blockchain,
     leader: u32,
 }
@@ -27,10 +30,24 @@ impl Client {
         Client {
             id,
             connected_peers: vec![],
-            lock: None,
+            centralized_lock: None, // tiene que saber cual es el lider
+            local_lock: None,       // solo si es lider
             blockchain: Blockchain::new(),
             leader: 0,
         }
+    }
+    // se llama cuando se lo designa coordinador
+    fn set_coordinator(&mut self) {
+        self.local_lock = Some(Arc::new(Mutex::new(false)));
+        self.leader = self.id;
+    }
+
+    fn update_coordinator(&mut self, id: u32) {
+        self.leader = id;
+    }
+
+    fn leader(&self) -> bool {
+        self.id == self.leader
     }
 
     pub fn run(&mut self, port_from: u16, port_to: u16) -> io::Result<()> {
@@ -73,22 +90,22 @@ impl Client {
                     self.connected_peers.push(peer);
                 }
                 ClientEvent::ReadBlockchainRequest {} => {
-                    // si me llega esto deberia ser lider
-                    // soy lider?
-                    // no, ToDo (error?, redirigirlo al lider?)
-                    // si ->
-                    let coord_stream_cell: Rc<RefCell<TcpStream>> = self.get_stream(self.id);
-                    let mut coord_stream = coord_stream_cell.borrow_mut();
-                    self.lock.acquire(true, &mut coord_stream); // <- esto deberia ser lock local, porque soy lider
-                    self.blockchain.refresh(); // aca seria devolver la blockchain en vez de esto??
-                                               // println!(blockchain);
-                    self.lock.release(&mut coord_stream); // <- esto deberia ser lock local, porque soy lider. Extrapolar con los demas msjs
+                    //deberia ser el mismo mensaje que se manda en el acquiera del centralizedlock
+                    if self.leader() {
+                        //necesita ser lider para devolver??
+                        /*
+                        let coord_stream_cell: Rc<RefCell<TcpStream>> = self.get_stream(self.id);
+                        let mut coord_stream = coord_stream_cell.borrow_mut();
+                        */
+                        sender.send(ClientEvent::ReadBlockchainResponse { approved: true });
+
+                        // self.blockchain.refresh(); // aca seria devolver la blockchain en vez de esto??
+                        // println!(blockchain);
+                        // self.lock.unlock(); // <- esto deberia ser lock local, porque soy lider. Extrapolar con los demas msjs
+                    }
                 }
-                ClientEvent::WriteBlockchainRequest { transaction } => {
-                    // si me llega esto deberia ser lider
-                    // soy lider?
-                    // no, ToDo (error?, redirigirlo al lider?)
-                    // si ->
+                ClientEvent::WriteBlockchainRequest {} => {
+                    /*
                     let coord_stream_cell: Rc<RefCell<TcpStream>> = self.get_stream(self.id);
                     let mut coord_stream = coord_stream_cell.borrow_mut();
                     self.lock.acquire(false, &mut coord_stream);
@@ -96,20 +113,34 @@ impl Client {
                     let _modifications = self.blockchain.add_transaction(transaction);
                     self.send_modifications(0, 0); //TODO: ver si va
                     self.lock.release(&mut coord_stream);
+                    */
+                    if self.leader() {
+                        let (lock_acq, lock_release) = channel();
+
+                        lock_acq.send(SyncEvent::WriteBlockchainResponse { approved: true });
+
+                        if let Ok(message) = lock_release.recv() {
+                            match message {
+                                SyncEvent::ReleaseLock { transaction: _ } => todo!(), //validar transaccion y actualizar blockchain y ?avisar a todos?
+                                _ => todo!(),
+                            }
+                        } //espero a que libere el "lock" (bloqueante, ToDo: timeout)
+                    }
                 }
-                ClientEvent::LockRequest {
-                    read_only,
-                    request_id,
-                } => {
-                    // si me llega esto deberia ser lider
-                    // soy lider?
-                    // no, ToDo (error?)
-                    // si ->
-                    let coord_stream_cell: Rc<RefCell<TcpStream>> = self.get_stream(request_id);
-                    let mut coord_stream = coord_stream_cell.borrow_mut();
-                    let _result = self.lock.acquire(read_only, &mut coord_stream);
-                    self.send_result(request_id, 0);
-                }
+
+                // ClientEvent::LockRequest {
+                //     read_only,
+                //     request_id,
+                // } => {
+                //     // si me llega esto deberia ser lider
+                //     // soy lider?
+                //     // no, ToDo (error?)
+                //     // si ->
+                //     let coord_stream_cell: Rc<RefCell<TcpStream>> = self.get_stream(request_id);
+                //     let mut coord_stream = coord_stream_cell.borrow_mut();
+                //     let _result = self.lock.acquire(read_only, &mut coord_stream);
+                //     self.send_result(request_id, 0);
+                // }
                 ClientEvent::LeaderElectionRequest {
                     request_id: _,
                     timestamp: _,
@@ -127,10 +158,10 @@ impl Client {
                 ClientEvent::OkMessage {} => {
                     // hay alguien mayor que esta vivo, o sea no voy a ser lider
                 }
-                ClientEvent::CoordinatorMessage {} => {
-                    //no me toca ser lider esta vez :(
-                    //aca deberia setear todas las comunicaciones al nuevo coordinador
+                ClientEvent::CoordinatorMessage { new_leader_id: id } => {
+                    self.update_coordinator(id)
                 }
+                _ => todo!(),
             }
         }
     }
