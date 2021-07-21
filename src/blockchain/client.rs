@@ -1,5 +1,6 @@
 use std::cell::RefCell;
-use std::io;
+use std::collections::HashMap;
+use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::net::{TcpListener, TcpStream};
 use std::rc::Rc;
@@ -7,18 +8,19 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
+use std::time::Duration;
+use std::{io, u16};
 
 use super::blockchain::Blockchain;
 
 use super::client_event::ClientEvent;
 use super::lock::CentralizedLock;
 use super::peer::Peer;
-use super::sync_event::SyncEvent;
 
 #[derive(Debug)]
 pub struct Client {
     id: u32,
-    connected_peers: Vec<Peer>,
+    connected_peers: HashMap<u16, Peer>,
     centralized_lock: Option<CentralizedLock>,
     local_lock: Option<Arc<Mutex<bool>>>,
     blockchain: Blockchain,
@@ -29,7 +31,7 @@ impl Client {
     pub fn new(id: u32) -> Self {
         Client {
             id,
-            connected_peers: vec![],
+            connected_peers: HashMap::new(),
             centralized_lock: None, // tiene que saber cual es el lider
             local_lock: None,       // solo si es lider
             blockchain: Blockchain::new(),
@@ -79,52 +81,56 @@ impl Client {
     }
 
     fn process_messages(&mut self, sender: Sender<ClientEvent>, receiver: Receiver<ClientEvent>) {
-        let mut cur_id = 0;
         //proceso mensajes que me llegan
         while let Ok(message) = receiver.recv() {
             match message {
                 ClientEvent::Connection { stream } => {
                     println!("Connection: {:?}", stream);
-                    let peer = Peer::new(cur_id, stream, sender.clone());
-                    cur_id += 1;
-                    self.connected_peers.push(peer);
+                    let port: u16 = stream.peer_addr().unwrap().port();
+                    let peer = Peer::new(port, stream, sender.clone());
+                    self.connected_peers.insert(port, peer);
                 }
-                ClientEvent::ReadBlockchainRequest {} => {
-                    //deberia ser el mismo mensaje que se manda en el acquiera del centralizedlock
+                ClientEvent::ReadBlockchainRequest { request_id: port } => {
                     if self.leader() {
-                        //necesita ser lider para devolver??
-                        /*
-                        let coord_stream_cell: Rc<RefCell<TcpStream>> = self.get_stream(self.id);
-                        let mut coord_stream = coord_stream_cell.borrow_mut();
-                        */
-                        sender.send(ClientEvent::ReadBlockchainResponse { approved: true });
+                        {
+                            //necesita ser lider para devolver??
 
-                        // self.blockchain.refresh(); // aca seria devolver la blockchain en vez de esto??
-                        // println!(blockchain);
-                        // self.lock.unlock(); // <- esto deberia ser lock local, porque soy lider. Extrapolar con los demas msjs
+                            // fijarse si esta lockeado, si va todo bien, entonces ->
+                            let stream_to_peer: Rc<RefCell<TcpStream>> = self.get_stream(port);
+                            let mut stream = stream_to_peer.borrow_mut();
+                            let body = self.blockchain.as_bytes();
+                            // stream.write(ClientEvent::ReadBlockchainResponse { approved: true });
+                            stream.write(body);
+                            // println!(blockchain);
+                            // self.lock.unlock(); // <- esto deberia ser lock local, porque soy lider. Extrapolar con los demas msjs
+                        }
                     }
                 }
-                ClientEvent::WriteBlockchainRequest {} => {
-                    /*
-                    let coord_stream_cell: Rc<RefCell<TcpStream>> = self.get_stream(self.id);
-                    let mut coord_stream = coord_stream_cell.borrow_mut();
-                    self.lock.acquire(false, &mut coord_stream);
-                    self.blockchain.refresh();
-                    let _modifications = self.blockchain.add_transaction(transaction);
-                    self.send_modifications(0, 0); //TODO: ver si va
-                    self.lock.release(&mut coord_stream);
-                    */
+                ClientEvent::WriteBlockchainRequest {
+                    request_id: port,
+                    transaction,
+                } => {
                     if self.leader() {
-                        let (lock_acq, lock_release) = channel();
+                        {
+                            //if not locked
+                            let stream_to_peer: Rc<RefCell<TcpStream>> = self.get_stream(port);
+                            let mut stream = &*stream_to_peer.borrow_mut();
+                            stream.write("You have the lock".as_bytes());
+                            stream.set_read_timeout(Some(Duration::new(1000, 0)));
+                            stream.read(&mut [0; 128]); //espera que le mande la transacion
 
-                        lock_acq.send(SyncEvent::WriteBlockchainResponse { approved: true });
+                            let valid = self.blockchain.validate(transaction.clone()); //esto deberia ser la transaccion que recibe cuando devuelve el lock
+                            self.blockchain.add_transaction(transaction);
+                            let stream_to_peer: Rc<RefCell<TcpStream>> = self.get_stream(port);
+                            let mut stream = stream_to_peer.borrow_mut();
 
-                        if let Ok(message) = lock_release.recv() {
-                            match message {
-                                SyncEvent::ReleaseLock { transaction: _ } => todo!(), //validar transaccion y actualizar blockchain y ?avisar a todos?
-                                _ => todo!(),
+                            if valid {
+                                let body = self.blockchain.as_bytes();
+                                // stream.write(ClientEvent::ReadBlockchainResponse { approved: true });
+                                stream.write(body);
                             }
-                        } //espero a que libere el "lock" (bloqueante, ToDo: timeout)
+                            stream.write("Err".as_bytes());
+                        }
                     }
                 }
 
@@ -161,7 +167,6 @@ impl Client {
                 ClientEvent::CoordinatorMessage { new_leader_id: id } => {
                     self.update_coordinator(id)
                 }
-                _ => todo!(),
             }
         }
     }
@@ -190,8 +195,8 @@ impl Client {
         }
     }
 
-    fn get_stream(&mut self, _id: u32) -> Rc<RefCell<TcpStream>> {
-        let ref peer = self.connected_peers[0];
+    fn get_stream(&mut self, port: u16) -> Rc<RefCell<TcpStream>> {
+        let peer = &self.connected_peers[&port];
         peer.stream.clone()
     }
 

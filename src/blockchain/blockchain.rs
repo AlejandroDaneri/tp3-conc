@@ -1,7 +1,9 @@
-#[derive(Debug)]
+use std::u8;
+
+#[derive(Debug, Clone)]
 pub struct Transaction {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Blockchain {}
 
 impl Blockchain {
@@ -14,4 +16,11 @@ impl Blockchain {
     pub fn refresh(&mut self) {}
 
     pub fn send_result() {}
+
+    pub fn as_bytes(&self) -> &'static [u8] {
+        todo!()
+    }
+    pub fn validate(&self, _tra: Transaction) -> bool {
+        todo!()
+    }
 }

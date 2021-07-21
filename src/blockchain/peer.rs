@@ -9,12 +9,12 @@ use super::client_event::ClientEvent;
 #[derive(Debug)]
 pub struct Peer {
     pub stream: Rc<RefCell<TcpStream>>,
-    id: usize,
+    id: u16,
     join_handler: thread::JoinHandle<()>,
 }
 
 impl Peer {
-    pub fn new(id: usize, stream: TcpStream, sender: Sender<ClientEvent>) -> Self {
+    pub fn new(id: u16, stream: TcpStream, sender: Sender<ClientEvent>) -> Self {
         let stream_clone = stream.try_clone().unwrap();
         let join_handler = thread::spawn(move || {
             let _id = 0;
