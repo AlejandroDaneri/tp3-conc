@@ -10,14 +10,14 @@ use std::thread::JoinHandle;
 use super::blockchain::Blockchain;
 
 use super::client_event::ClientEvent;
-use super::lock::{CentralizedLock, Lock};
+use super::lock::CentralizedLock;
 use super::peer::Peer;
 
 #[derive(Debug)]
 pub struct Client {
     id: u32,
     connected_peers: Vec<Peer>,
-    lock: CentralizedLock,
+    lock: Option<CentralizedLock>,
     blockchain: Blockchain,
     leader: u32,
 }
@@ -27,7 +27,7 @@ impl Client {
         Client {
             id,
             connected_peers: vec![],
-            lock: CentralizedLock::new(id, TcpStream::connect("127.0.0.1:0000").unwrap()), // si lo definimos aca necesitamos el coordinatdor en este momento
+            lock: None,
             blockchain: Blockchain::new(),
             leader: 0,
         }
