@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 use std::net::{TcpListener, TcpStream};
 use std::rc::Rc;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Arc, Mutex};
+
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
