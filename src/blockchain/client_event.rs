@@ -19,7 +19,7 @@ pub enum ClientEvent {
         timestamp: SystemTime,
     },
     ConnectionError {
-        connection_id: usize,
+        connection_id: u16,
     },
     OkMessage {},
     CoordinatorMessage {

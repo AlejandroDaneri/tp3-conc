@@ -22,7 +22,6 @@ pub struct Client {
     id: u32,
     connected_peers: HashMap<u16, Peer>,
     centralized_lock: Option<CentralizedLock>,
-    local_lock: Option<Arc<Mutex<bool>>>,
     blockchain: Blockchain,
     leader: u32,
 }
@@ -33,14 +32,12 @@ impl Client {
             id,
             connected_peers: HashMap::new(),
             centralized_lock: None, // tiene que saber cual es el lider
-            local_lock: None,       // solo si es lider
             blockchain: Blockchain::new(),
             leader: 0,
         }
     }
     // se llama cuando se lo designa coordinador
     fn set_coordinator(&mut self) {
-        self.local_lock = Some(Arc::new(Mutex::new(false)));
         self.leader = self.id;
     }
 
@@ -48,7 +45,7 @@ impl Client {
         self.leader = id;
     }
 
-    fn leader(&self) -> bool {
+    fn is_leader(&self) -> bool {
         self.id == self.leader
     }
 
@@ -91,7 +88,7 @@ impl Client {
                     self.connected_peers.insert(port, peer);
                 }
                 ClientEvent::ReadBlockchainRequest { request_id: port } => {
-                    if self.leader() {
+                    if self.is_leader() {
                         {
                             //necesita ser lider para devolver??
 
@@ -99,10 +96,9 @@ impl Client {
                             let stream_to_peer: Rc<RefCell<TcpStream>> = self.get_stream(port);
                             let mut stream = stream_to_peer.borrow_mut();
                             let body = self.blockchain.as_bytes();
-                            // stream.write(ClientEvent::ReadBlockchainResponse { approved: true });
                             stream.write(body);
                             // println!(blockchain);
-                            // self.lock.unlock(); // <- esto deberia ser lock local, porque soy lider. Extrapolar con los demas msjs
+                            // self.lock.unlock();
                         }
                     }
                 }
@@ -110,7 +106,7 @@ impl Client {
                     request_id: port,
                     transaction,
                 } => {
-                    if self.leader() {
+                    if self.is_leader() {
                         {
                             //if not locked
                             let stream_to_peer: Rc<RefCell<TcpStream>> = self.get_stream(port);
@@ -126,7 +122,6 @@ impl Client {
 
                             if valid {
                                 let body = self.blockchain.as_bytes();
-                                // stream.write(ClientEvent::ReadBlockchainResponse { approved: true });
                                 stream.write(body);
                             }
                             stream.write("Err".as_bytes());
@@ -158,8 +153,8 @@ impl Client {
                         self.notify_minions(0, 0);
                     }
                 }
-                ClientEvent::ConnectionError { connection_id: _ } => {
-                    //self.connected_peers.filter_by_id(id);
+                ClientEvent::ConnectionError { connection_id } => {
+                    self.connected_peers.remove(&connection_id);
                 }
                 ClientEvent::OkMessage {} => {
                     // hay alguien mayor que esta vivo, o sea no voy a ser lider
@@ -208,6 +203,6 @@ impl Client {
     }
     fn send_leader_request(&mut self, _id: u32, _result: u32) {}
     fn get_leader_id(&mut self, _id: u32, _result: u32) -> u32 {
-        return 0;
+        0
     }
 }
