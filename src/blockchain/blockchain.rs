@@ -1,5 +1,23 @@
 use std::collections::hash_map::DefaultHasher;
+
 use std::hash::Hasher;
+
+use std::fmt;
+
+#[derive(Debug)]
+pub enum BlockError {
+    CreateError,
+}
+
+impl std::error::Error for BlockError {}
+
+impl fmt::Display for BlockError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BlockError::CreateError => write!(f, "HTTP Error"),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Transaction {
@@ -26,13 +44,16 @@ pub struct Block {
 }
 
 impl Block {
-    pub fn new(transaction: Transaction, previous_hash: u64) -> Self {
+    pub fn new(transaction: Transaction, previous_hash: u64) -> Result<Self, BlockError> {
+        if !transaction.is_valid() {
+            return Err(BlockError::CreateError);
+        };
         let hash = generate_hash(transaction.clone(), previous_hash);
-        Self {
+        Ok(Self {
             transaction,
             previous_hash,
             hash,
-        }
+        })
     }
 
     pub fn is_valid(&self) -> bool {
@@ -82,7 +103,7 @@ impl Default for Blockchain {
 mod tests {
     use super::*;
 
-    fn eql_block(block1: Block, block2: Block) -> bool {
+    fn eql_block(block1: &Block, block2: Block) -> bool {
         block1.hash == block2.hash
             && block1.previous_hash == block2.previous_hash
             && block1.transaction.score == block2.transaction.score
@@ -104,32 +125,31 @@ mod tests {
     #[test]
     fn first_block_must_be_valid() {
         let transaction = Transaction::new("Pedro".to_string(), 7);
-        let block = Block::new(transaction, 0);
+        let block = Block::new(transaction, 0).unwrap();
         assert_eq!(block.is_valid(), true);
     }
     #[test]
     fn block_with_invalid_transaction_should_be_not_created() {
         let transaction = Transaction::new("Pedro".to_string(), u16::MAX);
         let block = Block::new(transaction, 0);
-        assert_eq!(block.is_valid(), false);
+        assert!(block.is_err());
     }
 
     #[test]
     fn different_blocks_with_same_content_must_be_eql() {
         let transaction = Transaction::new("Pedro".to_string(), 7);
-        let block = Block::new(transaction.clone(), 1245);
-        let block2 = Block::new(transaction, 1245);
+        let block = Block::new(transaction.clone(), 1245).unwrap();
+        let block2 = Block::new(transaction, 1245).unwrap();
         assert_eq!(block.hash, block2.hash);
     }
 
     #[test]
-    fn different_block_with_same_content_must_be_eql() {
+    fn block_must_be_the_same_after_adding_to_bc() {
         let transaction = Transaction::new("Pedro".to_string(), 7);
         let mut bc = Blockchain::new();
-        let block = Block::new(transaction.clone(), 0);
-        bc.add_block(block);
-        let _last_block = bc.get_last();
-        // TODO: arreglar
-        // assert_eq!(eql_block(*last_block, block.clone()), true);
+        let block = Block::new(transaction, 0).unwrap();
+        bc.add_block(block.clone());
+        let last_block = bc.get_last();
+        assert_eq!(eql_block(last_block, block), true);
     }
 }
