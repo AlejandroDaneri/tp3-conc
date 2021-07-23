@@ -1,6 +1,6 @@
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::net::TcpStream;
+use std::rc::Rc;
 use std::sync::mpsc::Sender;
 use std::thread;
 
