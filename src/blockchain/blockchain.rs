@@ -91,6 +91,13 @@ impl Blockchain {
     pub fn get_last(&self) -> &Block {
         self.blocks.last().unwrap()
     }
+
+    //temporal para que compile
+    pub fn as_bytes(&self) {}
+    pub fn add_transaction(&self, transaction: Transaction) {}
+    pub fn validate(&self, transaction: Transaction) -> bool {
+        true
+    }
 }
 
 impl Default for Blockchain {
