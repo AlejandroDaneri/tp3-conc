@@ -10,9 +10,9 @@ pub trait Lock {
 pub struct CentralizedLock {}
 
 impl Lock for CentralizedLock {
-    fn acquire(&mut self, read_only: bool, stream: &mut TcpStream) {}
+    fn acquire(&mut self, _read_only: bool, _stream: &mut TcpStream) {}
 
-    fn release(&mut self, stream: &mut TcpStream) {}
+    fn release(&mut self, _stream: &mut TcpStream) {}
 }
 
 impl CentralizedLock {

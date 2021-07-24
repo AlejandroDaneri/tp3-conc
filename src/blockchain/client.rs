@@ -6,10 +6,9 @@ use std::rc::Rc;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::SystemTime;
 
 use super::blockchain::Blockchain;
-use super::blockchain::Transaction;
+
 use super::client_event::ClientEvent;
 use super::lock::{CentralizedLock, Lock};
 use super::peer::Peer;
@@ -73,19 +72,19 @@ impl Client {
                     self.connected_peers.push(peer);
                 }
                 ClientEvent::ReadBlockchainRequest {} => {
-                    let stream_cell : Rc<RefCell<TcpStream>> = self.get_stream(self.id);
+                    let stream_cell: Rc<RefCell<TcpStream>> = self.get_stream(self.id);
                     let mut stream = stream_cell.borrow_mut();
                     self.lock.acquire(true, &mut stream);
-                    self.blockchain.refresh(); // pedir la nueva blockchain y guardarla
-                                               // println!(blockchain);
+                    // self.blockchain.refresh(); // pedir la nueva blockchain y guardarla
+                    // println!(blockchain);
                     self.lock.release(&mut stream);
                 }
-                ClientEvent::WriteBlockchainRequest { transaction } => {
-                    let stream_cell : Rc<RefCell<TcpStream>> = self.get_stream(self.id);
+                ClientEvent::WriteBlockchainRequest { transaction: _ } => {
+                    let stream_cell: Rc<RefCell<TcpStream>> = self.get_stream(self.id);
                     let mut stream = stream_cell.borrow_mut();
                     self.lock.acquire(false, &mut stream);
-                    self.blockchain.refresh();
-                    let modifications = self.blockchain.add_transaction(transaction);
+                    // self.blockchain.refresh();
+                    // let modifications = self.blockchain.add_transaction(transaction);
                     self.send_modifications(0, 0); //TODO: ver si va
                     self.lock.release(&mut stream);
                 }
@@ -93,14 +92,14 @@ impl Client {
                     read_only,
                     request_id,
                 } => {
-                    let stream_cell : Rc<RefCell<TcpStream>> = self.get_stream(request_id);
+                    let stream_cell: Rc<RefCell<TcpStream>> = self.get_stream(request_id);
                     let mut stream = stream_cell.borrow_mut();
-                    let result = self.lock.acquire(read_only, &mut stream);
+                    let _result = self.lock.acquire(read_only, &mut stream);
                     self.send_result(request_id, 0);
                 }
                 ClientEvent::LeaderElectionRequest {
-                    request_id,
-                    timestamp,
+                    request_id: _,
+                    timestamp: _,
                 } => {
                     self.send_leader_request(0, 0);
                     self.leader = self.get_leader_id(0, 0);
@@ -109,7 +108,7 @@ impl Client {
                         self.notify_minions(0, 0);
                     }
                 }
-                ClientEvent::ConnectionError { connection_id } => {
+                ClientEvent::ConnectionError { connection_id: _ } => {
                     //self.connected_peers.filter_by_id(id);
                 }
             }
@@ -145,11 +144,11 @@ impl Client {
         peer.stream.clone()
     }
 
-    fn send_result(&mut self, _id: u32, result: u32) {}
-    fn send_modifications(&mut self, _id: u32, result: u32) {}
-    fn notify_minions(&mut self, _id: u32, result: u32) {}
-    fn send_leader_request(&mut self, _id: u32, result: u32) {}
-    fn get_leader_id(&mut self, _id: u32, result: u32) -> u32 {
+    fn send_result(&mut self, _id: u32, _result: u32) {}
+    fn send_modifications(&mut self, _id: u32, _result: u32) {}
+    fn notify_minions(&mut self, _id: u32, _result: u32) {}
+    fn send_leader_request(&mut self, _id: u32, _result: u32) {}
+    fn get_leader_id(&mut self, _id: u32, _result: u32) -> u32 {
         return 0;
     }
 }
