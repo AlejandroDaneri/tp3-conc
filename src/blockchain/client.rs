@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::{Read, Write};
+use std::io;
+use std::io::{BufReader, BufRead, Read, Write};
 use std::net::SocketAddr;
 use std::net::{TcpListener, TcpStream};
 use std::rc::Rc;
@@ -8,12 +9,9 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::Duration;
-use std::{io, u16};
 
 use super::blockchain::Blockchain;
-
-use super::client_event::ClientEvent;
+use super::client_event::{ClientEvent, ClientEventReader};
 use super::lock::CentralizedLock;
 use super::peer::Peer;
 
@@ -57,111 +55,138 @@ impl Client {
             // TODO? listener no bloqueante para poder salir del incoming
             let listener = Client::listen_in_range(port_from, port_to)?;
             let own_port: u16 = listener.local_addr()?.port();
+            let (response_sender, _) = channel();
             for stream in Client::broadcast(own_port, port_from, port_to).into_iter() {
                 let event = ClientEvent::Connection { stream };
-                client_sender.send(event).unwrap();
+                client_sender.send((event, response_sender.clone())).unwrap();
             }
             for connection in listener.incoming() {
                 let event = ClientEvent::Connection {
                     stream: connection?,
                 };
-                client_sender.send(event).unwrap();
+                client_sender.send((event, response_sender.clone())).unwrap();
             }
             Ok(())
         });
 
-        self.process_messages(sender, receiver);
+        let cur_id = 0; // receiver.recv()?
+
+        let input_sender = sender.clone();
+
+        thread::spawn(move || -> io::Result<()> {
+            let source = io::stdin();
+            let event_reader = ClientEventReader::new(source, cur_id);
+            let (response_sender, response_receiver) = channel();
+            for event in event_reader {
+                println!("Enviando evento {:?}", event);
+                input_sender.send((event, response_sender.clone()));
+                let response = response_receiver.recv().expect("sender closed unexpectedly");
+                println!("{}", response);
+            };
+            println!("Saliendo de la aplicación");
+            Ok(())
+        });
+
+        self.process_events(sender, receiver);
 
         listener_handle.join().unwrap()?;
 
         Ok(())
     }
 
-    fn process_messages(&mut self, sender: Sender<ClientEvent>, receiver: Receiver<ClientEvent>) {
+    fn process_events(&mut self, sender: Sender<(ClientEvent, Sender<String>)>, receiver: Receiver<(ClientEvent, Sender<String>)>) {
         //proceso mensajes que me llegan
-        while let Ok(message) = receiver.recv() {
-            match message {
-                ClientEvent::Connection { stream } => {
-                    println!("Connection: {:?}", stream);
-                    let port: u16 = stream.peer_addr().unwrap().port();
-                    let peer = Peer::new(port, stream, sender.clone());
-                    self.connected_peers.insert(port, peer);
-                }
-                ClientEvent::ReadBlockchainRequest { request_id: port } => {
-                    if self.is_leader() {
-                        {
-                            //necesita ser lider para devolver??
+        while let Ok((event, response_sender)) = receiver.recv() {
+            if let Some(response) = self.process_event(event, &sender) {
+                response_sender.send(response);
+            }
+        }
+    }
 
-                            // fijarse si esta lockeado, si va todo bien, entonces ->
-                            let stream_to_peer: Rc<RefCell<TcpStream>> = self.get_stream(port);
-                            let mut stream = stream_to_peer.borrow_mut();
-                            let body = self.blockchain.as_bytes();
-                            stream.write(body);
-                            // println!(blockchain);
-                            // self.lock.unlock();
-                        }
+    fn process_event(&mut self, event: ClientEvent, sender: &Sender<(ClientEvent, Sender<String>)>) -> Option<String> {
+        match event {
+            ClientEvent::Connection { stream } => {
+                println!("Connection: {:?}", stream);
+                let port: u16 = stream.peer_addr().unwrap().port();
+                let peer = Peer::new(port as u32, stream, sender.clone());
+                self.connected_peers.insert(port, peer);
+                Some("Ok".to_owned())
+            }
+            ClientEvent::ReadBlockchainRequest {} => {
+                let response;
+                if self.is_leader() {
+                    {
+                        //necesita ser lider para devolver??
+
+                        // fijarse si esta lockeado, si va todo bien, entonces ->
+                        //let stream_to_peer: Rc<RefCell<TcpStream>> = self.get_stream(port);
+                        //let mut stream = stream_to_peer.borrow_mut();
+                        response = self.blockchain.as_str();
+                        //stream.write(body.as_bytes());
+                        // println!(blockchain);
+                        // self.lock.unlock();
+                    }
+                } else {
+                    response = "TODO: No leader!".to_owned();
+                }
+                Some(response)
+            }
+            ClientEvent::WriteBlockchainRequest {
+                transaction,
+            } => {
+                if self.is_leader() {
+                    {
+                        //if not locked
+                        /*let stream_to_peer: Rc<RefCell<TcpStream>> = self.get_stream(port);
+                        let mut stream = &*stream_to_peer.borrow_mut();
+                        stream.write("You have the lock".as_bytes());
+                        stream.set_read_timeout(Some(Duration::new(1000, 0)));
+                        stream.read(&mut [0; 128]); //espera que le mande la transacion
+                        */
+                        let valid = self.blockchain.validate(transaction.clone()); //esto deberia ser la transaccion que recibe cuando devuelve el lock
+                        self.blockchain.add_transaction(transaction);
+                        let body = self.blockchain.as_str();
                     }
                 }
-                ClientEvent::WriteBlockchainRequest {
-                    request_id: port,
-                    transaction,
-                } => {
-                    if self.is_leader() {
-                        {
-                            //if not locked
-                            let stream_to_peer: Rc<RefCell<TcpStream>> = self.get_stream(port);
-                            let mut stream = &*stream_to_peer.borrow_mut();
-                            stream.write("You have the lock".as_bytes());
-                            stream.set_read_timeout(Some(Duration::new(1000, 0)));
-                            stream.read(&mut [0; 128]); //espera que le mande la transacion
+                Some("TODO: WriteBlockchainRequest response".to_owned())
+            }
 
-                            let valid = self.blockchain.validate(transaction.clone()); //esto deberia ser la transaccion que recibe cuando devuelve el lock
-                            self.blockchain.add_transaction(transaction);
-                            let stream_to_peer: Rc<RefCell<TcpStream>> = self.get_stream(port);
-                            let mut stream = stream_to_peer.borrow_mut();
-
-                            if valid {
-                                let body = self.blockchain.as_bytes();
-                                stream.write(body);
-                            }
-                            stream.write("Err".as_bytes());
-                        }
-                    }
+            // ClientEvent::LockRequest {
+            //     read_only,
+            //     request_id,
+            // } => {
+            //     // si me llega esto deberia ser lider
+            //     // soy lider?
+            //     // no, ToDo (error?)
+            //     // si ->
+            //     let coord_stream_cell: Rc<RefCell<TcpStream>> = self.get_stream(request_id);
+            //     let mut coord_stream = coord_stream_cell.borrow_mut();
+            //     let _result = self.lock.acquire(read_only, &mut coord_stream);
+            //     self.send_result(request_id, 0);
+            // }
+            ClientEvent::LeaderElectionRequest {
+                request_id: _,
+                timestamp: _,
+            } => {
+                self.send_leader_request(0, 0);
+                self.leader = self.get_leader_id(0, 0);
+                if self.leader == self.id {
+                    //si el lider soy yo
+                    self.notify_minions(0, 0);
                 }
-
-                // ClientEvent::LockRequest {
-                //     read_only,
-                //     request_id,
-                // } => {
-                //     // si me llega esto deberia ser lider
-                //     // soy lider?
-                //     // no, ToDo (error?)
-                //     // si ->
-                //     let coord_stream_cell: Rc<RefCell<TcpStream>> = self.get_stream(request_id);
-                //     let mut coord_stream = coord_stream_cell.borrow_mut();
-                //     let _result = self.lock.acquire(read_only, &mut coord_stream);
-                //     self.send_result(request_id, 0);
-                // }
-                ClientEvent::LeaderElectionRequest {
-                    request_id: _,
-                    timestamp: _,
-                } => {
-                    self.send_leader_request(0, 0);
-                    self.leader = self.get_leader_id(0, 0);
-                    if self.leader == self.id {
-                        //si el lider soy yo
-                        self.notify_minions(0, 0);
-                    }
-                }
-                ClientEvent::ConnectionError { connection_id } => {
-                    self.connected_peers.remove(&connection_id);
-                }
-                ClientEvent::OkMessage {} => {
-                    // hay alguien mayor que esta vivo, o sea no voy a ser lider
-                }
-                ClientEvent::CoordinatorMessage { new_leader_id: id } => {
-                    self.update_coordinator(id)
-                }
+                Some("TODO: LeaderElectionRequest response".to_owned())
+            }
+            ClientEvent::ConnectionError { connection_id } => {
+                let id = connection_id as u16;
+                self.connected_peers.remove(&id);
+                None
+            }
+            ClientEvent::OkMessage {} => {
+                None
+            }
+            ClientEvent::CoordinatorMessage { connection_id: id } => {
+                self.update_coordinator(id);
+                Some("TODO: CoordinatorMessageResponse?".to_owned())
             }
         }
     }
@@ -188,11 +213,6 @@ impl Client {
             Ok(listener) => Ok(listener),
             Err(_err) => Err(io::Error::new(io::ErrorKind::Other, "Pool not available")),
         }
-    }
-
-    fn get_stream(&mut self, port: u16) -> Rc<RefCell<TcpStream>> {
-        let peer = &self.connected_peers[&port];
-        peer.stream.clone()
     }
 
     fn send_result(&mut self, _id: u32, _result: u32) {}
