@@ -7,19 +7,22 @@ pub enum ClientEvent {
     Connection {
         stream: TcpStream,
     },
-    ReadBlockchainRequest {},
-    WriteBlockchainRequest {
-        transaction: Transaction,
+    ReadBlockchainRequest {
+        request_id: u16,
     },
-    LockRequest {
-        read_only: bool,
-        request_id: u32,
+    WriteBlockchainRequest {
+        request_id: u16,
+        transaction: Transaction,
     },
     LeaderElectionRequest {
         request_id: u32,
         timestamp: SystemTime,
     },
     ConnectionError {
-        connection_id: usize,
+        connection_id: u16,
+    },
+    OkMessage {},
+    CoordinatorMessage {
+        new_leader_id: u32,
     },
 }
