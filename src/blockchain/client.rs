@@ -6,7 +6,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use super::blockchain::Blockchain;
 use super::client_event::{ClientEvent, ClientEventReader, ClientMessage};
@@ -55,8 +55,8 @@ impl Client {
             // TODO? listener no bloqueante para poder salir del incoming
             let listener = Client::listen_in_range(port_from, port_to)?;
             let own_port: u16 = listener.local_addr()?.port();
-            Client::do_broadcasting(port_from, port_to, &client_sender, own_port);
-            Client::listen_to_incoming(client_sender, listener);
+            Client::do_broadcasting(port_from, port_to, &client_sender, own_port)?;
+            Client::listen_to_incoming(client_sender, listener)?;
             Ok(())
         });
 
@@ -82,7 +82,9 @@ impl Client {
         let (response_sender, response_receiver) = channel();
         for message in message_reader {
             println!("Enviando evento {:?}", message);
-            input_sender.send((ClientEvent::Message { message }, response_sender.clone()));
+            input_sender
+                .send((ClientEvent::Message { message }, response_sender.clone()))
+                .unwrap();
             let response = response_receiver
                 .recv()
                 .expect("sender closed unexpectedly");
@@ -160,25 +162,30 @@ impl Client {
     }
 
     fn process_message(&mut self, message: ClientMessage) -> Option<String> {
+        let mut response = None;
+        while response.is_none() {
+            println!("Leader: {}", self.leader);
+            let peer_message = message.clone();
+            response = self.process_message_remote(peer_message);
+            if response.is_none() {
+                self.send_leader_request(self.id);
+                // TODO!!!!!
+                self.leader = self.id;
+            }
+            println!("Message: {:?}, response: {:?}", message, response);
+            std::thread::sleep(Duration::from_secs(1));
+        }
+        response
+    }
+
+    fn process_message_remote(&mut self, message: ClientMessage) -> Option<String> {
         match message {
             ClientMessage::ReadBlockchainRequest {} => {
-                let response;
                 if self.is_leader() {
-                    {
-                        //necesita ser lider para devolver??
-
-                        // fijarse si esta lockeado, si va todo bien, entonces ->
-                        //let stream_to_peer: Rc<RefCell<TcpStream>> = self.get_stream(port);
-                        //let mut stream = stream_to_peer.borrow_mut();
-                        response = self.blockchain.as_str();
-                        //stream.write(body.as_bytes());
-                        // println!(blockchain);
-                        // self.lock.unlock();
-                    }
+                    Some(self.blockchain.as_str())
                 } else {
-                    response = "TODO: No leader!".to_owned();
+                    self.send_request_to_leader(message)
                 }
-                Some(response)
             }
             ClientMessage::WriteBlockchainRequest { transaction } => {
                 if self.is_leader() {
@@ -224,7 +231,7 @@ impl Client {
                 if response.is_ok() {
                     return Some(format!("el lider sigue siendo: {}", self.leader));
                 }
-                thread::spawn(move || Client::send_leader_request(self, self.id));
+                //thread::spawn(move || Client::send_leader_request(self, self.id));
                 return Some("Bully OK".to_owned());
             }
 
@@ -270,7 +277,7 @@ impl Client {
     fn send_result(&mut self, _id: u32, _result: u32) {}
     fn send_modifications(&mut self, _id: u32, _result: u32) {}
 
-    fn notify_minions(&mut self, _id: u32) {
+    fn notify_minions(&self, _id: u32) {
         for (peer_pid, peer) in self.connected_peers.iter() {
             peer.write_message(ClientMessage::CoordinatorMessage {
                 connection_id: self.id,
@@ -279,6 +286,7 @@ impl Client {
     }
     fn send_leader_request(&self, id: u32) {
         let mut higher_alive = false;
+
         for (peer_pid, peer) in self.connected_peers.iter() {
             if peer_pid > &(self.id as u16) {
                 let response = peer.write_message(ClientMessage::LeaderElectionRequest {
@@ -296,6 +304,13 @@ impl Client {
         }
         self.notify_minions(self.id);
     }
+
+    fn send_request_to_leader(&self, message: ClientMessage) -> Option<String> {
+        let leader = self.leader as u16;
+        let leader_peer = self.connected_peers.get(&leader)?;
+        leader_peer.write_message(message).ok()
+    }
+
     fn get_leader_id(&mut self, _id: u32, _result: u32) -> u32 {
         0
     }
