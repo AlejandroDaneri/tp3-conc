@@ -11,7 +11,7 @@ use super::blockchain::Blockchain;
 use super::client_event::{ClientEvent, ClientEventReader};
 use super::lock::CentralizedLock;
 use super::peer::Peer;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Error, Write};
 use std::str::FromStr;
 
 #[derive(Debug)]
@@ -54,27 +54,8 @@ impl Client {
             // TODO? listener no bloqueante para poder salir del incoming
             let listener = Client::listen_in_range(port_from, port_to)?;
             let own_port: u16 = listener.local_addr()?.port();
-            for stream in Client::broadcast(own_port, port_from, port_to).into_iter() {
-                let mut stream_clone = stream.try_clone()?;
-                let event = ClientEvent::Connection { stream };
-                let (response_sender, response_receiver) = channel();
-                client_sender
-                    .send((event, response_sender.clone()))
-                    .unwrap();
-                let response: String = response_receiver.recv().unwrap();
-                stream_clone.write(response.as_bytes())?;
-            }
-            for connection in listener.incoming() {
-                let stream = connection?;
-                let mut stream_clone = stream.try_clone().unwrap();
-                let event = ClientEvent::Connection { stream };
-                let (response_sender, response_receiver) = channel();
-                client_sender
-                    .send((event, response_sender.clone()))
-                    .unwrap();
-                let response = response_receiver.recv().unwrap();
-                stream_clone.write(response.as_bytes())?;
-            }
+            Client::do_broadcasting(port_from, port_to, &client_sender, own_port);
+            Client::listen_to_incoming(client_sender, listener);
             Ok(())
         });
 
@@ -82,30 +63,72 @@ impl Client {
 
         let input_sender = sender.clone();
 
-        thread::spawn(move || -> io::Result<()> {
-            let source = io::stdin();
-            let event_reader = ClientEventReader::new(source, cur_id);
-            let (response_sender, response_receiver) = channel();
-            for event in event_reader {
-                println!("Enviando evento {:?}", event);
-                input_sender.send((event, response_sender.clone()));
-                let response = response_receiver
-                    .recv()
-                    .expect("sender closed unexpectedly");
-                println!("{}", response);
-            }
-            println!("Saliendo de la aplicación");
-            Ok(())
-        });
+        thread::spawn(move || -> io::Result<()> { Client::process_stdin(cur_id, input_sender) });
 
-        self.process_events(sender, receiver);
+        self.process_incoming_events(sender, receiver);
 
         listener_handle.join().unwrap()?;
 
         Ok(())
     }
 
-    fn process_events(
+    fn process_stdin(
+        cur_id: u32,
+        input_sender: Sender<(ClientEvent, Sender<String>)>,
+    ) -> Result<(), Error> {
+        let source = io::stdin();
+        let event_reader = ClientEventReader::new(source, cur_id);
+        let (response_sender, response_receiver) = channel();
+        for event in event_reader {
+            println!("Enviando evento {:?}", event);
+            input_sender.send((event, response_sender.clone()));
+            let response = response_receiver
+                .recv()
+                .expect("sender closed unexpectedly");
+            println!("{}", response);
+        }
+        println!("Saliendo de la aplicación");
+        Ok(())
+    }
+
+    fn listen_to_incoming(
+        client_sender: Sender<(ClientEvent, Sender<String>)>,
+        listener: TcpListener,
+    ) -> Result<(), Error> {
+        for connection in listener.incoming() {
+            let stream = connection?;
+            let mut stream_clone = stream.try_clone().unwrap();
+            let event = ClientEvent::Connection { stream };
+            let (response_sender, response_receiver) = channel();
+            client_sender
+                .send((event, response_sender.clone()))
+                .unwrap();
+            let response = response_receiver.recv().unwrap();
+            stream_clone.write(response.as_bytes())?;
+        }
+        Ok(())
+    }
+
+    fn do_broadcasting(
+        port_from: u16,
+        port_to: u16,
+        client_sender: &Sender<(ClientEvent, Sender<String>)>,
+        own_port: u16,
+    ) -> Result<(), Error> {
+        for stream in Client::broadcast(own_port, port_from, port_to).into_iter() {
+            let mut stream_clone = stream.try_clone()?;
+            let event = ClientEvent::Connection { stream };
+            let (response_sender, response_receiver) = channel();
+            client_sender
+                .send((event, response_sender.clone()))
+                .unwrap();
+            let response: String = response_receiver.recv().unwrap();
+            stream_clone.write(response.as_bytes())?;
+        }
+        Ok(())
+    }
+
+    fn process_incoming_events(
         &mut self,
         sender: Sender<(ClientEvent, Sender<String>)>,
         receiver: Receiver<(ClientEvent, Sender<String>)>,
