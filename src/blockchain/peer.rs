@@ -3,7 +3,7 @@ use std::sync::mpsc::{channel, Sender};
 use std::thread;
 
 use super::client_event::ClientEvent;
-use crate::blockchain::client_event::ClientEventReader;
+use crate::blockchain::client_event::{ClientEventReader, ClientMessage};
 use std::io::Write;
 
 #[derive(Debug)]
@@ -28,20 +28,18 @@ impl Peer {
     ) {
         let (response_sender, response_receiver) = channel();
         let stream_clone = stream.try_clone().unwrap();
-        let event_reader = ClientEventReader::new(stream_clone, id);
-        for event in event_reader {
-            sender.send((event, response_sender.clone()));
+        let message_reader = ClientEventReader::new(stream_clone, id);
+        for message in message_reader {
+            sender.send((ClientEvent::Message { message }, response_sender.clone()));
             let response = response_receiver
                 .recv()
                 .expect("sender closed unexpectedly");
             stream.write(response.as_bytes());
         }
         println!("No more events!");
+        let message = ClientMessage::ConnectionError { connection_id: id };
         sender
-            .send((
-                ClientEvent::ConnectionError { connection_id: id },
-                response_sender,
-            ))
+            .send((ClientEvent::Message { message }, response_sender))
             .unwrap();
     }
 }

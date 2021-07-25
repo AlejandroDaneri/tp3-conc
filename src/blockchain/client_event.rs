@@ -6,9 +6,12 @@ use super::blockchain::Transaction;
 
 #[derive(Debug)]
 pub enum ClientEvent {
-    Connection {
-        stream: TcpStream,
-    },
+    Connection { stream: TcpStream },
+    Message { message: ClientMessage },
+}
+
+#[derive(Debug)]
+pub enum ClientMessage {
     ReadBlockchainRequest {},
     WriteBlockchainRequest {
         transaction: Transaction,
@@ -37,21 +40,21 @@ impl<R: Read> ClientEventReader<R> {
         Self { reader, client_id }
     }
 
-    fn parse_write_blockchain(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientEvent> {
+    fn parse_write_blockchain(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
         let transaction = Transaction::parse(tokens)?;
-        Some(ClientEvent::WriteBlockchainRequest { transaction })
+        Some(ClientMessage::WriteBlockchainRequest { transaction })
     }
 }
 
 impl<R: Read> Iterator for ClientEventReader<R> {
-    type Item = ClientEvent;
+    type Item = ClientMessage;
     fn next(&mut self) -> Option<<Self as Iterator>::Item> {
         let mut line = String::new();
         self.reader.read_line(&mut line);
         let mut tokens = line.split_whitespace();
         let action = tokens.next();
         match action {
-            Some("rb") => Some(ClientEvent::ReadBlockchainRequest {}),
+            Some("rb") => Some(ClientMessage::ReadBlockchainRequest {}),
             Some("wb") => ClientEventReader::<R>::parse_write_blockchain(&mut tokens),
             _ => None,
         }

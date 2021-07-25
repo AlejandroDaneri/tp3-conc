@@ -8,7 +8,7 @@ use std::thread;
 use std::thread::JoinHandle;
 
 use super::blockchain::Blockchain;
-use super::client_event::{ClientEvent, ClientEventReader};
+use super::client_event::{ClientEvent, ClientEventReader, ClientMessage};
 use super::lock::CentralizedLock;
 use super::peer::Peer;
 use std::io::{BufRead, BufReader, Error, Write};
@@ -77,11 +77,11 @@ impl Client {
         input_sender: Sender<(ClientEvent, Sender<String>)>,
     ) -> Result<(), Error> {
         let source = io::stdin();
-        let event_reader = ClientEventReader::new(source, cur_id);
+        let message_reader = ClientEventReader::new(source, cur_id);
         let (response_sender, response_receiver) = channel();
-        for event in event_reader {
-            println!("Enviando evento {:?}", event);
-            input_sender.send((event, response_sender.clone()));
+        for message in message_reader {
+            println!("Enviando evento {:?}", message);
+            input_sender.send((ClientEvent::Message { message }, response_sender.clone()));
             let response = response_receiver
                 .recv()
                 .expect("sender closed unexpectedly");
@@ -154,7 +154,13 @@ impl Client {
                 let message = format!("Coordinator {}", self.leader);
                 Some(message)
             }
-            ClientEvent::ReadBlockchainRequest {} => {
+            ClientEvent::Message { message } => self.process_message(message),
+        }
+    }
+
+    fn process_message(&mut self, message: ClientMessage) -> Option<String> {
+        match message {
+            ClientMessage::ReadBlockchainRequest {} => {
                 let response;
                 if self.is_leader() {
                     {
@@ -173,7 +179,7 @@ impl Client {
                 }
                 Some(response)
             }
-            ClientEvent::WriteBlockchainRequest { transaction } => {
+            ClientMessage::WriteBlockchainRequest { transaction } => {
                 if self.is_leader() {
                     {
                         //if not locked
@@ -204,7 +210,7 @@ impl Client {
             //     let _result = self.lock.acquire(read_only, &mut coord_stream);
             //     self.send_result(request_id, 0);
             // }
-            ClientEvent::LeaderElectionRequest {
+            ClientMessage::LeaderElectionRequest {
                 request_id: _,
                 timestamp: _,
             } => {
@@ -216,13 +222,13 @@ impl Client {
                 }
                 Some("TODO: LeaderElectionRequest response".to_owned())
             }
-            ClientEvent::ConnectionError { connection_id } => {
+            ClientMessage::ConnectionError { connection_id } => {
                 let id = connection_id as u16;
                 self.connected_peers.remove(&id);
                 None
             }
-            ClientEvent::OkMessage {} => None,
-            ClientEvent::CoordinatorMessage { connection_id: id } => {
+            ClientMessage::OkMessage {} => None,
+            ClientMessage::CoordinatorMessage { connection_id: id } => {
                 self.update_coordinator(id);
                 Some("TODO: CoordinatorMessageResponse?".to_owned())
             }
