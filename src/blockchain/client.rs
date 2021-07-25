@@ -224,24 +224,8 @@ impl Client {
                 if response.is_ok() {
                     return Some(format!("el lider sigue siendo: {}", self.leader));
                 }
-
-                let mut higher_alive = false;
-                for (peer_pid, peer) in self.connected_peers.iter() {
-                    if peer_pid > &(self.id as u16) {
-                        let response = peer.write_message(ClientMessage::LeaderElectionRequest {
-                            request_id: self.id,
-                            timestamp: SystemTime::now(),
-                        });
-                        if response.is_ok() {
-                            higher_alive = true
-                        }
-                    }
-                }
-
-                if higher_alive {
-                    return Some("Bully OK".to_owned());
-                }
-                Some("Bully cordinator".to_owned())
+                thread::spawn(move || Client::send_leader_request(self, self.id));
+                return Some("Bully OK".to_owned());
             }
 
             ClientMessage::ConnectionError { connection_id } => {
@@ -286,10 +270,32 @@ impl Client {
     fn send_result(&mut self, _id: u32, _result: u32) {}
     fn send_modifications(&mut self, _id: u32, _result: u32) {}
 
-    fn notify_minions(&mut self, _id: u32, _result: u32) {
-        //enviar a todos mi stream y/o canal para que me pidan lock y esas cosas
+    fn notify_minions(&mut self, _id: u32) {
+        for (peer_pid, peer) in self.connected_peers.iter() {
+            peer.write_message(ClientMessage::CoordinatorMessage {
+                connection_id: self.id,
+            });
+        }
     }
-    fn send_leader_request(&mut self, _id: u32, _result: u32) {}
+    fn send_leader_request(&self, id: u32) {
+        let mut higher_alive = false;
+        for (peer_pid, peer) in self.connected_peers.iter() {
+            if peer_pid > &(self.id as u16) {
+                let response = peer.write_message(ClientMessage::LeaderElectionRequest {
+                    request_id: self.id,
+                    timestamp: SystemTime::now(),
+                });
+                if response.is_ok() {
+                    higher_alive = true
+                }
+            }
+        }
+
+        if higher_alive {
+            return;
+        }
+        self.notify_minions(self.id);
+    }
     fn get_leader_id(&mut self, _id: u32, _result: u32) -> u32 {
         0
     }
