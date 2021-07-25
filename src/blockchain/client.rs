@@ -1,10 +1,7 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io;
-use std::io::{BufReader, BufRead, Read, Write};
 use std::net::SocketAddr;
 use std::net::{TcpListener, TcpStream};
-use std::rc::Rc;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 use std::thread;
@@ -14,6 +11,8 @@ use super::blockchain::Blockchain;
 use super::client_event::{ClientEvent, ClientEventReader};
 use super::lock::CentralizedLock;
 use super::peer::Peer;
+use std::io::{BufRead, BufReader, Write};
+use std::str::FromStr;
 
 #[derive(Debug)]
 pub struct Client {
@@ -55,16 +54,26 @@ impl Client {
             // TODO? listener no bloqueante para poder salir del incoming
             let listener = Client::listen_in_range(port_from, port_to)?;
             let own_port: u16 = listener.local_addr()?.port();
-            let (response_sender, _) = channel();
             for stream in Client::broadcast(own_port, port_from, port_to).into_iter() {
+                let mut stream_clone = stream.try_clone()?;
                 let event = ClientEvent::Connection { stream };
-                client_sender.send((event, response_sender.clone())).unwrap();
+                let (response_sender, response_receiver) = channel();
+                client_sender
+                    .send((event, response_sender.clone()))
+                    .unwrap();
+                let response: String = response_receiver.recv().unwrap();
+                stream_clone.write(response.as_bytes())?;
             }
             for connection in listener.incoming() {
-                let event = ClientEvent::Connection {
-                    stream: connection?,
-                };
-                client_sender.send((event, response_sender.clone())).unwrap();
+                let stream = connection?;
+                let mut stream_clone = stream.try_clone().unwrap();
+                let event = ClientEvent::Connection { stream };
+                let (response_sender, response_receiver) = channel();
+                client_sender
+                    .send((event, response_sender.clone()))
+                    .unwrap();
+                let response = response_receiver.recv().unwrap();
+                stream_clone.write(response.as_bytes())?;
             }
             Ok(())
         });
@@ -80,9 +89,11 @@ impl Client {
             for event in event_reader {
                 println!("Enviando evento {:?}", event);
                 input_sender.send((event, response_sender.clone()));
-                let response = response_receiver.recv().expect("sender closed unexpectedly");
+                let response = response_receiver
+                    .recv()
+                    .expect("sender closed unexpectedly");
                 println!("{}", response);
-            };
+            }
             println!("Saliendo de la aplicación");
             Ok(())
         });
@@ -94,7 +105,11 @@ impl Client {
         Ok(())
     }
 
-    fn process_events(&mut self, sender: Sender<(ClientEvent, Sender<String>)>, receiver: Receiver<(ClientEvent, Sender<String>)>) {
+    fn process_events(
+        &mut self,
+        sender: Sender<(ClientEvent, Sender<String>)>,
+        receiver: Receiver<(ClientEvent, Sender<String>)>,
+    ) {
         //proceso mensajes que me llegan
         while let Ok((event, response_sender)) = receiver.recv() {
             if let Some(response) = self.process_event(event, &sender) {
@@ -103,14 +118,18 @@ impl Client {
         }
     }
 
-    fn process_event(&mut self, event: ClientEvent, sender: &Sender<(ClientEvent, Sender<String>)>) -> Option<String> {
+    fn process_event(
+        &mut self,
+        event: ClientEvent,
+        sender: &Sender<(ClientEvent, Sender<String>)>,
+    ) -> Option<String> {
         match event {
-            ClientEvent::Connection { stream } => {
-                println!("Connection: {:?}", stream);
-                let port: u16 = stream.peer_addr().unwrap().port();
-                let peer = Peer::new(port as u32, stream, sender.clone());
-                self.connected_peers.insert(port, peer);
-                Some("Ok".to_owned())
+            ClientEvent::Connection { mut stream } => {
+                let peer_pid = self.exchange_pids(&mut stream).ok()?;
+                let peer = Peer::new(peer_pid, stream, sender.clone());
+                self.connected_peers.insert(peer_pid as u16, peer);
+                let message = format!("Coordinator {}", self.leader);
+                Some(message)
             }
             ClientEvent::ReadBlockchainRequest {} => {
                 let response;
@@ -131,9 +150,7 @@ impl Client {
                 }
                 Some(response)
             }
-            ClientEvent::WriteBlockchainRequest {
-                transaction,
-            } => {
+            ClientEvent::WriteBlockchainRequest { transaction } => {
                 if self.is_leader() {
                     {
                         //if not locked
@@ -181,9 +198,7 @@ impl Client {
                 self.connected_peers.remove(&id);
                 None
             }
-            ClientEvent::OkMessage {} => {
-                None
-            }
+            ClientEvent::OkMessage {} => None,
             ClientEvent::CoordinatorMessage { connection_id: id } => {
                 self.update_coordinator(id);
                 Some("TODO: CoordinatorMessageResponse?".to_owned())
@@ -224,5 +239,16 @@ impl Client {
     fn send_leader_request(&mut self, _id: u32, _result: u32) {}
     fn get_leader_id(&mut self, _id: u32, _result: u32) -> u32 {
         0
+    }
+
+    fn exchange_pids(&self, stream: &mut TcpStream) -> io::Result<u32> {
+        let pid_msg = format!("{}\n", self.id);
+        stream.write(pid_msg.as_bytes())?;
+        let mut bufReader = BufReader::new(stream);
+        let mut client_pid = String::new();
+        bufReader.read_line(&mut client_pid)?;
+        client_pid.pop();
+        u32::from_str(&client_pid)
+            .map_err(|err| io::Error::new(io::ErrorKind::Other, "bad client pid"))
     }
 }

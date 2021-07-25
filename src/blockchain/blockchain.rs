@@ -20,7 +20,8 @@ impl fmt::Display for BlockError {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Transaction {
-    Insert(TransactionData), Remove(String)
+    Insert(TransactionData),
+    Remove(String),
 }
 
 impl Transaction {
@@ -34,10 +35,8 @@ impl Transaction {
     pub fn parse(tokens: &mut dyn Iterator<Item = &str>) -> Option<Self> {
         let action = tokens.next();
         match action {
-            Some("insert") => {
-                Some(Transaction::Insert(TransactionData::parse(tokens)?))
-            },
-            _ => None
+            Some("insert") => Some(Transaction::Insert(TransactionData::parse(tokens)?)),
+            _ => None,
         }
     }
 }
@@ -45,7 +44,7 @@ impl Transaction {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TransactionData {
     student: String,
-    score: u16
+    score: u16,
 }
 
 impl TransactionData {
@@ -57,7 +56,10 @@ impl TransactionData {
     pub fn parse(tokens: &mut dyn Iterator<Item = &str>) -> Option<Self> {
         let student = tokens.next()?;
         let score = tokens.next()?;
-        Some(Self::new(student, u16::from_str(score).expect("invalid score number")))
+        Some(Self::new(
+            student,
+            u16::from_str(score).expect("invalid score number"),
+        ))
     }
 
     pub fn is_valid(&self) -> bool {
@@ -101,8 +103,10 @@ fn generate_hash(transaction: Transaction, previous_hash: u64) -> u64 {
         Transaction::Insert(data) => {
             hasher.write(data.student.as_bytes());
             hasher.write_u16(data.score);
-        },
-        Transaction::Remove(key) => {hasher.write(key.as_bytes());},
+        }
+        Transaction::Remove(key) => {
+            hasher.write(key.as_bytes());
+        }
     };
     hasher.write_u64(previous_hash);
     hasher.finish()
