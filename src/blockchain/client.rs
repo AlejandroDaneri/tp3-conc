@@ -6,6 +6,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 
 use std::thread;
 use std::thread::JoinHandle;
+use std::time::SystemTime;
 
 use super::blockchain::Blockchain;
 use super::client_event::{ClientEvent, ClientEventReader, ClientMessage};
@@ -211,27 +212,50 @@ impl Client {
             //     self.send_result(request_id, 0);
             // }
             ClientMessage::LeaderElectionRequest {
-                request_id: _,
+                request_id,
                 timestamp: _,
             } => {
-                self.send_leader_request(0, 0);
-                self.leader = self.get_leader_id(0, 0);
-                if self.leader == self.id {
-                    //si el lider soy yo
-                    self.notify_minions(0, 0);
+                //TODO: usar timestamp
+                if request_id > self.id {
+                    return Some("Yo no puedo ser lider".to_owned());
                 }
-                Some("TODO: LeaderElectionRequest response".to_owned())
+                let leader = self.connected_peers.get(&(self.leader as u16)).unwrap();
+                let response = leader.write_message(ClientMessage::StillAlive {});
+                if response.is_ok() {
+                    return Some(format!("el lider sigue siendo: {}", self.leader));
+                }
+
+                let mut higher_alive = false;
+                for (peer_pid, peer) in self.connected_peers.iter() {
+                    if peer_pid > &(self.id as u16) {
+                        let response = peer.write_message(ClientMessage::LeaderElectionRequest {
+                            request_id: self.id,
+                            timestamp: SystemTime::now(),
+                        });
+                        if response.is_ok() {
+                            higher_alive = true
+                        }
+                    }
+                }
+
+                if higher_alive {
+                    return Some("Bully OK".to_owned());
+                }
+                Some("Bully cordinator".to_owned())
             }
+
             ClientMessage::ConnectionError { connection_id } => {
                 let id = connection_id as u16;
                 self.connected_peers.remove(&id);
                 None
             }
             ClientMessage::OkMessage {} => None,
+
             ClientMessage::CoordinatorMessage { connection_id: id } => {
                 self.update_coordinator(id);
-                Some("TODO: CoordinatorMessageResponse?".to_owned())
+                None
             }
+            ClientMessage::StillAlive {} => todo!(),
         }
     }
 
@@ -273,9 +297,9 @@ impl Client {
     fn exchange_pids(&self, stream: &mut TcpStream) -> io::Result<u32> {
         let pid_msg = format!("{}\n", self.id);
         stream.write(pid_msg.as_bytes())?;
-        let mut bufReader = BufReader::new(stream);
+        let mut buf_reader = BufReader::new(stream);
         let mut client_pid = String::new();
-        bufReader.read_line(&mut client_pid)?;
+        buf_reader.read_line(&mut client_pid)?;
         client_pid.pop();
         u32::from_str(&client_pid)
             .map_err(|err| io::Error::new(io::ErrorKind::Other, "bad client pid"))

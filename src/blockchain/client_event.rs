@@ -27,6 +27,7 @@ pub enum ClientMessage {
     CoordinatorMessage {
         connection_id: u32,
     },
+    StillAlive {},
 }
 
 pub struct ClientEventReader<R> {

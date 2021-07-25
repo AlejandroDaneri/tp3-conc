@@ -1,3 +1,4 @@
+use std::fmt::Error;
 use std::net::TcpStream;
 use std::sync::mpsc::{channel, Sender};
 use std::thread;
@@ -41,5 +42,10 @@ impl Peer {
         sender
             .send((ClientEvent::Message { message }, response_sender))
             .unwrap();
+    }
+
+    pub fn write_message(&self, msg: ClientMessage) -> Result<&str, Error> {
+        //mandar msg esperar respuesta , si no respone devolver error
+        Ok("ok")
     }
 }
