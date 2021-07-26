@@ -162,23 +162,25 @@ impl Client {
     }
 
     fn process_message(&mut self, message: ClientMessage) -> Option<String> {
+        println!("process_message: {}", message);
+
         let mut response = None;
-        while response.is_none() {
-            println!("Leader: {}", self.leader);
-            let peer_message = message.clone();
-            response = self.process_message_remote(peer_message);
-            if response.is_none() {
-                self.send_leader_request(self.id);
-                // TODO!!!!!
-                self.leader = self.id;
-            }
-            println!("Message: {:?}, response: {:?}", message, response);
-            std::thread::sleep(Duration::from_secs(1));
+        // while response.is_none() {
+        println!("Leader: {}", self.leader);
+        println!("My ID: {}", self.id);
+        let peer_message = message.clone();
+        response = self.process_message_remote(peer_message);
+        if response.is_none() {
+            self.send_leader_request(self.id);
         }
+        println!("Message: {:?}, response: {:?}", message, response);
+        std::thread::sleep(Duration::from_secs(1));
+        // }
         response
     }
 
     fn process_message_remote(&mut self, message: ClientMessage) -> Option<String> {
+        println!("process_message_remote: {}", message);
         match message {
             ClientMessage::ReadBlockchainRequest {} => {
                 if self.is_leader() {
@@ -223,6 +225,7 @@ impl Client {
                 timestamp: _,
             } => {
                 //TODO: usar timestamp
+                println!("recibi leader-------------------------------");
                 if request_id > self.id {
                     return Some("Yo no puedo ser lider".to_owned());
                 }
@@ -232,7 +235,7 @@ impl Client {
                     return Some(format!("el lider sigue siendo: {}", self.leader));
                 }
                 //thread::spawn(move || Client::send_leader_request(self, self.id));
-                return Some("Bully OK".to_owned());
+                Some("Bully OK".to_owned())
             }
 
             ClientMessage::ConnectionError { connection_id } => {
@@ -244,9 +247,13 @@ impl Client {
 
             ClientMessage::CoordinatorMessage { connection_id: id } => {
                 self.update_coordinator(id);
+                if self.leader != self.id {
+                    println!("New leader: {}", id);
+                }
                 None
             }
             ClientMessage::StillAlive {} => todo!(),
+            ClientMessage::NoOp {} => None,
         }
     }
 
@@ -284,11 +291,12 @@ impl Client {
             });
         }
     }
-    fn send_leader_request(&self, id: u32) {
+    fn send_leader_request(&mut self, id: u32) {
         let mut higher_alive = false;
 
         for (peer_pid, peer) in self.connected_peers.iter() {
             if peer_pid > &(self.id as u16) {
+                println!("hay peer que pueden ser lider");
                 let response = peer.write_message(ClientMessage::LeaderElectionRequest {
                     request_id: self.id,
                     timestamp: SystemTime::now(),
@@ -302,6 +310,7 @@ impl Client {
         if higher_alive {
             return;
         }
+        self.leader = self.id;
         self.notify_minions(self.id);
     }
 

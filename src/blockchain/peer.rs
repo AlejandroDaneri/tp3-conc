@@ -46,17 +46,17 @@ impl Peer {
             }
         }
         println!("No more events!");
-        let message = ClientMessage::ConnectionError { connection_id: id };
+        let message = ClientMessage::NoOp {};
         sender.send((ClientEvent::Message { message }, response_sender))?;
         Ok(())
     }
 
     pub fn write_message(&self, msg: ClientMessage) -> Result<String, io::Error> {
         //mandar msg esperar respuesta , si no respone devolver error
-        let response = format!("{}\n", msg);
+        let msg = format!("{}\n", msg);
         if let Ok(mut stream) = self.stream.lock() {
-            stream.write(response.as_bytes())?;
+            stream.write(msg.as_bytes())?;
         }
-        Ok(response)
+        Ok(msg)
     }
 }
