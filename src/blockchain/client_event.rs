@@ -36,7 +36,7 @@ impl fmt::Display for ClientMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ClientMessage::ReadBlockchainRequest {} => write!(f, "rb"),
-            ClientMessage::WriteBlockchainRequest { transaction } => write!(f, "wb {}", "test,10"),
+            ClientMessage::WriteBlockchainRequest { transaction } => write!(f, "wb {}", "test 10"),
             ClientMessage::LeaderElectionRequest {
                 request_id,
                 timestamp,

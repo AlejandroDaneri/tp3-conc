@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::fmt;
 use std::hash::Hasher;
@@ -36,6 +37,10 @@ impl Transaction {
         let action = tokens.next();
         match action {
             Some("insert") => Some(Transaction::Insert(TransactionData::parse(tokens)?)),
+            Some("remove") => {
+                let name = tokens.next()?;
+                Some(Transaction::Remove(name.to_owned()))
+            },
             _ => None,
         }
     }
@@ -124,15 +129,19 @@ impl Blockchain {
     pub fn add_block(&mut self, block: Block) {
         self.blocks.push(block)
     }
-    pub fn get_last(&self) -> &Block {
-        self.blocks.last().unwrap()
+    pub fn get_last(&self) -> Option<&Block> {
+        self.blocks.last()
     }
 
-    //temporal para que compile
-    pub fn as_str(&self) -> String {
-        "Blockchain".to_owned()
+    pub fn add_transaction(&mut self, transaction: Transaction) {
+        let prev_hash = if let Some(last) = self.get_last(){
+            last.hash
+        } else {
+            0
+        };
+        let block = Block::new(transaction, prev_hash).unwrap();
+        self.add_block(block);
     }
-    pub fn add_transaction(&self, transaction: Transaction) {}
     pub fn validate(&self, transaction: Transaction) -> bool {
         true
     }
@@ -141,6 +150,27 @@ impl Blockchain {
 impl Default for Blockchain {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl fmt::Display for Blockchain {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut entries = HashMap::new();
+        for block in &self.blocks {
+            match &block.transaction {
+                Transaction::Insert(data) => {
+                    let key = data.student.clone();
+                    entries.insert(key, data.score);
+                },
+                Transaction::Remove(student) => {
+                    entries.remove(student);
+                }
+            }
+        }
+        for (student, score) in entries.iter() {
+            writeln!(f, "Student {} -> {}", student, score)?;
+        }
+        Ok(())
     }
 }
 
