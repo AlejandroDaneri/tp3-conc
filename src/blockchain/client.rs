@@ -182,7 +182,7 @@ impl Client {
         match message {
             ClientMessage::ReadBlockchainRequest {} => {
                 if self.is_leader() {
-                    Some(self.blockchain.as_str())
+                    Some(self.blockchain.to_string())
                 } else {
                     self.send_request_to_leader(message)
                 }
@@ -199,10 +199,9 @@ impl Client {
                         */
                         let valid = self.blockchain.validate(transaction.clone()); //esto deberia ser la transaccion que recibe cuando devuelve el lock
                         self.blockchain.add_transaction(transaction);
-                        let body = self.blockchain.as_str();
                     }
                 }
-                Some("TODO: WriteBlockchainRequest response".to_owned())
+                Some(self.blockchain.to_string())
             }
 
             // ClientEvent::LockRequest {
@@ -238,15 +237,15 @@ impl Client {
             ClientMessage::ConnectionError { connection_id } => {
                 let id = connection_id as u16;
                 self.connected_peers.remove(&id);
-                None
+                Some(format!("Disconnected {}", id))
             }
             ClientMessage::OkMessage {} => None,
 
             ClientMessage::CoordinatorMessage { connection_id: id } => {
                 self.update_coordinator(id);
-                None
+                Some(format!("CoordinatorUpdate {}", id))
             }
-            ClientMessage::StillAlive {} => todo!(),
+            ClientMessage::StillAlive {} => Some("Alive".to_owned()),
         }
     }
 
