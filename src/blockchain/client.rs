@@ -243,7 +243,10 @@ impl Client {
 
             ClientMessage::CoordinatorMessage { connection_id: id } => {
                 self.update_coordinator(id);
-                None
+                if self.leader != self.id {
+                    println!("New leader: {}", id);
+                }
+                Some("Coordinator".to_owned())
             }
             ClientMessage::StillAlive {} => todo!(),
         }
@@ -283,7 +286,7 @@ impl Client {
             });
         }
     }
-    fn send_leader_request(&self, id: u32) {
+    fn send_leader_request(&mut self, id: u32) {
         let mut higher_alive = false;
 
         for (peer_pid, peer) in self.connected_peers.iter() {
@@ -297,7 +300,7 @@ impl Client {
                 }
             }
         }
-
+        self.leader = self.id;
         if higher_alive {
             return;
         }

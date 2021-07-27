@@ -46,8 +46,8 @@ impl Peer {
             }
         }
         println!("No more events!");
-        let message = ClientMessage::ConnectionError { connection_id: id };
-        sender.send((ClientEvent::Message { message }, response_sender))?;
+        // let message = ClientMessage::ConnectionError { connection_id: id };
+        // sender.send((ClientEvent::Message { message }, response_sender))?;
         Ok(())
     }
 
