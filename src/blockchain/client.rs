@@ -149,6 +149,7 @@ impl Client {
         event: ClientEvent,
         sender: &Sender<(ClientEvent, Sender<String>)>,
     ) -> Option<String> {
+        println!("My ID: {}", self.id);
         match event {
             ClientEvent::Connection { mut stream } => {
                 let peer_pid = self.exchange_pids(&mut stream).ok()?;
@@ -168,9 +169,8 @@ impl Client {
             let peer_message = message.clone();
             response = self.process_message_remote(peer_message);
             if response.is_none() {
+                println!("response is none");
                 self.send_leader_request(self.id);
-                // TODO!!!!!
-                self.leader = self.id;
             }
             println!("Message: {:?}, response: {:?}", message, response);
             std::thread::sleep(Duration::from_secs(1));
@@ -225,13 +225,15 @@ impl Client {
                 if request_id > self.id {
                     return Some("Yo no puedo ser lider".to_owned());
                 }
-                let leader = self.connected_peers.get(&(self.leader as u16)).unwrap();
-                let response = leader.write_message(ClientMessage::StillAlive {});
-                if response.is_ok() {
-                    return Some(format!("el lider sigue siendo: {}", self.leader));
+                if self.leader != 0 {
+                    let leader = self.connected_peers.get(&(self.leader as u16)).unwrap();
+                    let response = leader.write_message(ClientMessage::StillAlive {});
+                    if response.is_ok() {
+                        return Some(format!("el lider sigue siendo: {}", self.leader));
+                    }
                 }
-                //thread::spawn(move || Client::send_leader_request(self, self.id));
-                return Some("Bully OK".to_owned());
+                Client::send_leader_request(self, self.id); // TODO: hacer en otro thread?
+                Some("Bully OK".to_owned())
             }
 
             ClientMessage::ConnectionError { connection_id } => {
@@ -239,16 +241,16 @@ impl Client {
                 self.connected_peers.remove(&id);
                 Some(format!("Disconnected {}", id))
             }
-            ClientMessage::OkMessage {} => None,
+            ClientMessage::OkMessage {} => Some("OkResponse".to_owned()),
 
             ClientMessage::CoordinatorMessage { connection_id: id } => {
                 self.update_coordinator(id);
                 if self.leader != self.id {
                     println!("New leader: {}", id);
                 }
-                Some("Coordinator".to_owned())
+                Some("CoordinatorResponse".to_owned())
             }
-            ClientMessage::StillAlive {} => todo!(),
+            ClientMessage::StillAlive {} => Some("StillAliveResponse".to_owned()),
         }
     }
 
@@ -280,6 +282,7 @@ impl Client {
     fn send_modifications(&mut self, _id: u32, _result: u32) {}
 
     fn notify_minions(&self, _id: u32) {
+        println!("--*--notify----");
         for (peer_pid, peer) in self.connected_peers.iter() {
             peer.write_message(ClientMessage::CoordinatorMessage {
                 connection_id: self.id,
@@ -300,17 +303,21 @@ impl Client {
                 }
             }
         }
-        self.leader = self.id;
+
         if higher_alive {
             return;
         }
+        self.leader = self.id;
         self.notify_minions(self.id);
     }
 
     fn send_request_to_leader(&self, message: ClientMessage) -> Option<String> {
-        let leader = self.leader as u16;
-        let leader_peer = self.connected_peers.get(&leader)?;
-        leader_peer.write_message(message).ok()
+        if self.leader != 0 {
+            let leader = self.leader as u16;
+            let leader_peer = self.connected_peers.get(&leader)?;
+            return leader_peer.write_message(message).ok();
+        }
+        None
     }
 
     fn get_leader_id(&mut self, _id: u32, _result: u32) -> u32 {
