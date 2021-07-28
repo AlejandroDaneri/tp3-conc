@@ -73,7 +73,6 @@ impl<R: Read> ClientEventReader<R> {
 
     fn parse_leader_req(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
         let a = tokens.next().unwrap();
-        println!("{}", a);
         let b = tokens.next(); //pasar a timestamp
         Some(ClientMessage::LeaderElectionRequest {
             request_id: a.parse::<u32>().unwrap(),
@@ -82,7 +81,6 @@ impl<R: Read> ClientEventReader<R> {
     }
 
     fn parse_coord(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
-        let a = tokens.next().unwrap();
         let new_leader_id = tokens.next().unwrap();
         Some(ClientMessage::CoordinatorMessage {
             connection_id: new_leader_id.parse::<u32>().unwrap(),
@@ -102,7 +100,7 @@ impl<R: Read> Iterator for ClientEventReader<R> {
             Some("rb") => Some(ClientMessage::ReadBlockchainRequest {}),
             Some("wb") => ClientEventReader::<R>::parse_write_blockchain(&mut tokens),
             Some("le") => ClientEventReader::<R>::parse_leader_req(&mut tokens),
-            Some("Coordinator") => ClientEventReader::<R>::parse_coord(&mut tokens),
+            Some("coordinator") => ClientEventReader::<R>::parse_coord(&mut tokens),
             _ => None,
         }
     }

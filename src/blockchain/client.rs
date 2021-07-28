@@ -118,14 +118,15 @@ impl Client {
         client_sender: &Sender<(ClientEvent, Sender<String>)>,
         own_port: u16,
     ) -> Result<(), Error> {
-        for stream in Client::broadcast(own_port, port_from, port_to).into_iter() {
+        for stream in Client::broadcast(own_port, port_from, port_to) {
             let mut stream_clone = stream.try_clone()?;
             let event = ClientEvent::Connection { stream };
             let (response_sender, response_receiver) = channel();
             client_sender
                 .send((event, response_sender.clone()))
                 .unwrap();
-            let response: String = response_receiver.recv().unwrap();
+            let response: String = response_receiver.recv().unwrap(); // TODO: <- se traba aca despues de la primer iteracion
+
             stream_clone.write(response.as_bytes())?;
         }
         Ok(())
@@ -152,11 +153,15 @@ impl Client {
         println!("My ID: {}", self.id);
         match event {
             ClientEvent::Connection { mut stream } => {
+                println!("NEW CONNECTION");
                 let peer_pid = self.exchange_pids(&mut stream).ok()?;
                 let peer = Peer::new(peer_pid, stream, sender.clone());
                 self.connected_peers.insert(peer_pid as u16, peer);
-                let message = format!("Coordinator {}", self.leader);
-                Some(message)
+                if self.leader != 0 {
+                    let message = format!("coordinator {}", self.leader);
+                    return Some(message);
+                }
+                None
             }
             ClientEvent::Message { message } => self.process_message(message),
         }
@@ -164,21 +169,22 @@ impl Client {
 
     fn process_message(&mut self, message: ClientMessage) -> Option<String> {
         let mut response = None;
-        while response.is_none() {
-            println!("Leader: {}", self.leader);
-            let peer_message = message.clone();
-            response = self.process_message_remote(peer_message);
-            if response.is_none() {
-                println!("response is none");
-                self.send_leader_request(self.id);
-            }
-            println!("Message: {:?}, response: {:?}", message, response);
-            std::thread::sleep(Duration::from_secs(1));
+        // while response.is_none() {
+        println!("Leader: {}", self.leader);
+        let peer_message = message.clone();
+        response = self.process_message_remote(peer_message);
+        if response.is_none() {
+            println!("INTENTE DE NUEVO MAS TARDE");
+            self.send_leader_request(self.id);
         }
+        println!("Message: {:?} was answered with: {:?}", message, response);
+        std::thread::sleep(Duration::from_secs(1));
+        // }
         response
     }
 
     fn process_message_remote(&mut self, message: ClientMessage) -> Option<String> {
+        println!("PROCESS: {:?}", message);
         match message {
             ClientMessage::ReadBlockchainRequest {} => {
                 if self.is_leader() {
@@ -226,10 +232,15 @@ impl Client {
                     return Some("Yo no puedo ser lider".to_owned());
                 }
                 if self.leader != 0 {
-                    let leader = self.connected_peers.get(&(self.leader as u16)).unwrap();
-                    let response = leader.write_message(ClientMessage::StillAlive {});
-                    if response.is_ok() {
-                        return Some(format!("el lider sigue siendo: {}", self.leader));
+                    println!("{:?}", self.connected_peers);
+                    if !self.is_leader() {
+                        let leader = self.connected_peers.get(&(self.leader as u16)).unwrap();
+                        let response = leader.write_message(ClientMessage::StillAlive {});
+                        if response.is_ok() {
+                            return Some(format!("el lider sigue siendo: {}", self.leader));
+                        }
+                    } else {
+                        return Some("Bully OK".to_owned());
                     }
                 }
                 Client::send_leader_request(self, self.id); // TODO: hacer en otro thread?
@@ -282,7 +293,7 @@ impl Client {
     fn send_modifications(&mut self, _id: u32, _result: u32) {}
 
     fn notify_minions(&self, _id: u32) {
-        println!("--*--notify----");
+        println!("----notify----");
         for (peer_pid, peer) in self.connected_peers.iter() {
             peer.write_message(ClientMessage::CoordinatorMessage {
                 connection_id: self.id,
@@ -291,7 +302,7 @@ impl Client {
     }
     fn send_leader_request(&mut self, id: u32) {
         let mut higher_alive = false;
-
+        println!("MANDE LIDER");
         for (peer_pid, peer) in self.connected_peers.iter() {
             if peer_pid > &(self.id as u16) {
                 let response = peer.write_message(ClientMessage::LeaderElectionRequest {
@@ -305,9 +316,11 @@ impl Client {
         }
 
         if higher_alive {
+            println!("NO SOY NUEVO LIDER");
             return;
         }
         self.leader = self.id;
+        println!("SOY NUEVO LIDER");
         self.notify_minions(self.id);
     }
 
