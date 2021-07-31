@@ -105,12 +105,8 @@ impl Client {
         own_port: u16,
     ) -> Result<(), Error> {
         for stream in Client::broadcast(own_port, port_from, port_to) {
-            let mut stream_clone = stream.try_clone()?;
             let event = ClientEvent::Connection { stream };
-            let (response_sender, response_receiver) = channel();
             client_sender.send(event).unwrap();
-            let response: String = response_receiver.recv().unwrap();
-            stream_clone.write(response.as_bytes())?;
         }
         Ok(())
     }

@@ -82,6 +82,50 @@ impl ClientMessage {
             ClientMessage::TodoMessage { msg } => format!("TODO! {}", msg),
         }
     }
+
+    pub fn deserialize(line: String) -> Option<ClientMessage> {
+        let mut tokens = line.split_whitespace();
+        let action = tokens.next();
+        match action {
+            Some("rb") => Some(ClientMessage::ReadBlockchainRequest {}),
+            Some("wb") => ClientMessage::parse_write_blockchain(&mut tokens),
+            Some("le") => ClientMessage::parse_leader_req(&mut tokens),
+            Some("lock") => ClientMessage::parse_lock_req(&mut tokens),
+            Some("coordinator") => ClientMessage::parse_coord(&mut tokens),
+            _ => None,
+        }
+    }
+
+
+    fn parse_write_blockchain(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
+        let transaction = Transaction::parse(tokens)?;
+        Some(ClientMessage::WriteBlockchainRequest { transaction })
+    }
+
+    fn parse_leader_req(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
+        let request_id_str = tokens.next()?;
+        let timestamp_str = tokens.next()?; //pasar a timestamp
+        Some(ClientMessage::LeaderElectionRequest {
+            request_id: request_id_str.parse::<u32>().ok()?,
+            timestamp: SystemTime::now(),
+        })
+    }
+
+    fn parse_lock_req(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
+        let read_only_str = tokens.next()?;
+        let request_id_str = tokens.next()?; //pasar a timestamp
+        Some(ClientMessage::LockRequest {
+            read_only: read_only_str.parse::<bool>().ok()?,
+            request_id: request_id_str.parse::<u32>().ok()?,
+        })
+    }
+
+    fn parse_coord(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
+        let new_leader_id = tokens.next().unwrap();
+        Some(ClientMessage::CoordinatorMessage {
+            connection_id: new_leader_id.parse::<u32>().unwrap(),
+        })
+    }
 }
 
 pub struct ClientEventReader<R> {
@@ -94,27 +138,6 @@ impl<R: Read> ClientEventReader<R> {
         let reader = BufReader::new(source);
         Self { reader, client_id }
     }
-
-    fn parse_write_blockchain(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
-        let transaction = Transaction::parse(tokens)?;
-        Some(ClientMessage::WriteBlockchainRequest { transaction })
-    }
-
-    fn parse_leader_req(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
-        let a = tokens.next().unwrap();
-        let b = tokens.next(); //pasar a timestamp
-        Some(ClientMessage::LeaderElectionRequest {
-            request_id: a.parse::<u32>().unwrap(),
-            timestamp: SystemTime::now(),
-        })
-    }
-
-    fn parse_coord(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
-        let new_leader_id = tokens.next().unwrap();
-        Some(ClientMessage::CoordinatorMessage {
-            connection_id: new_leader_id.parse::<u32>().unwrap(),
-        })
-    }
 }
 
 impl<R: Read> Iterator for ClientEventReader<R> {
@@ -122,15 +145,6 @@ impl<R: Read> Iterator for ClientEventReader<R> {
     fn next(&mut self) -> Option<<Self as Iterator>::Item> {
         let mut line = String::new();
         self.reader.read_line(&mut line).ok()?;
-        let mut tokens = line.split_whitespace();
-        let action = tokens.next();
-        println!("Reader: {:?}", action);
-        match action {
-            Some("rb") => Some(ClientMessage::ReadBlockchainRequest {}),
-            Some("wb") => ClientEventReader::<R>::parse_write_blockchain(&mut tokens),
-            Some("le") => ClientEventReader::<R>::parse_leader_req(&mut tokens),
-            Some("coordinator") => ClientEventReader::<R>::parse_coord(&mut tokens),
-            _ => None,
-        }
+        ClientMessage::deserialize(line)
     }
 }
