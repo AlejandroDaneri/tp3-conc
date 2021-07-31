@@ -79,14 +79,13 @@ impl TransactionData {
     }
 
     pub fn is_valid(&self) -> bool {
-        //validamos estudiante de alguna forma?
         self.score > 0 && self.score <= 10
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block {
-    transaction: Transaction, // podria ser mas de una transaction x bloque en la realidad
+    transaction: Transaction,
     previous_hash: u64,
     hash: u64,
 }
@@ -106,6 +105,15 @@ impl Block {
 
     pub fn is_valid(&self) -> bool {
         self.transaction.is_valid() && self.hash == hash_block(self.clone())
+    }
+
+    pub fn serialize(&self) -> String {
+        format!(
+            "{} {} {}",
+            self.transaction.serialize(),
+            format!("{}", self.previous_hash),
+            format!("{}", self.hash),
+        )
     }
 }
 
@@ -153,8 +161,20 @@ impl Blockchain {
         let block = Block::new(transaction, prev_hash).unwrap();
         self.add_block(block);
     }
-    pub fn validate(&self, transaction: Transaction) -> bool {
+    pub fn validate(&self, _transaction: Transaction) -> bool {
         true
+    }
+
+    pub fn serialize(&self) -> String {
+        let mut response = String::new();
+        for block in self.blocks.iter() {
+            if response.is_empty() {
+                response = block.serialize()
+            } else {
+                response = format!("{} {}", response, block.serialize())
+            }
+        }
+        response
     }
 }
 

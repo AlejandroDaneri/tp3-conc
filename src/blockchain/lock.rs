@@ -1,9 +1,12 @@
+use crate::blockchain::lock::LockResult::{Acquired, Locked, ReleaseFailed, Released};
 use crate::blockchain::peer::PeerIdType;
-use crate::blockchain::lock::LockResult::{Acquired, Locked, Released, ReleaseFailed};
 
 #[derive(PartialEq)]
 pub enum LockResult {
-    Acquired, Locked, Released, ReleaseFailed
+    Acquired,
+    Locked,
+    Released,
+    ReleaseFailed,
 }
 
 pub trait Lock {
@@ -53,6 +56,6 @@ impl Lock for CentralizedLock {
 
 impl CentralizedLock {
     pub fn new() -> CentralizedLock {
-        CentralizedLock {peer_id: None}
+        CentralizedLock { peer_id: None }
     }
 }

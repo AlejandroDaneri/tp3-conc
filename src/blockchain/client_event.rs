@@ -53,7 +53,9 @@ impl ClientMessage {
     pub fn serialize(&self) -> String {
         match self {
             ClientMessage::ReadBlockchainRequest {} => "rb".to_owned(),
-            ClientMessage::ReadBlockchainResponse { blockchain } => "blockhain".to_owned(),
+            ClientMessage::ReadBlockchainResponse { blockchain } => {
+                format!("blockhain {}", blockchain.serialize())
+            }
             ClientMessage::WriteBlockchainRequest { transaction } => {
                 format!("wb {}", transaction.serialize())
             }
@@ -66,7 +68,7 @@ impl ClientMessage {
             }
             ClientMessage::LockRequest {
                 read_only,
-                request_id
+                request_id,
             } => {
                 if *read_only {
                     format!("lock read {}", request_id)
@@ -96,7 +98,6 @@ impl ClientMessage {
         }
     }
 
-
     fn parse_write_blockchain(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
         let transaction = Transaction::parse(tokens)?;
         Some(ClientMessage::WriteBlockchainRequest { transaction })
@@ -104,7 +105,7 @@ impl ClientMessage {
 
     fn parse_leader_req(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
         let request_id_str = tokens.next()?;
-        let timestamp_str = tokens.next()?; //pasar a timestamp
+        let _timestamp_str = tokens.next()?; //pasar a timestamp
         Some(ClientMessage::LeaderElectionRequest {
             request_id: request_id_str.parse::<u32>().ok()?,
             timestamp: SystemTime::now(),

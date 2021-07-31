@@ -6,7 +6,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::{Duration, SystemTime};
+use std::time::{SystemTime};
 
 use crate::blockchain::blockchain::Blockchain;
 use crate::blockchain::client_event::{ClientEvent, ClientEventReader, ClientMessage};
@@ -175,7 +175,7 @@ impl Client {
             ClientMessage::WriteBlockchainRequest { transaction } => {
                 if self.is_leader() {
                     {
-                        let valid = self.blockchain.validate(transaction.clone()); //esto deberia ser la transaccion que recibe cuando devuelve el lock
+                        let _valid = self.blockchain.validate(transaction.clone()); //esto deberia ser la transaccion que recibe cuando devuelve el lock
                         self.blockchain.add_transaction(transaction);
                     }
                 }
@@ -183,15 +183,19 @@ impl Client {
             }
 
             ClientMessage::LockRequest {
-                read_only,
+                read_only: _,
                 request_id,
             } => {
                 // si me llega esto deberia ser lider
                 // soy lider?
                 if self.lock.acquire(request_id) == LockResult::Acquired {
-                    Some(ClientMessage::TodoMessage { msg: format!("lock acquired") })
+                    Some(ClientMessage::TodoMessage {
+                        msg: format!("lock acquired"),
+                    })
                 } else {
-                    Some(ClientMessage::TodoMessage { msg: format!("lock failed") })
+                    Some(ClientMessage::TodoMessage {
+                        msg: format!("lock failed"),
+                    })
                 }
             }
 
@@ -262,13 +266,13 @@ impl Client {
 
     fn notify_minions(&self, _id: u32) {
         println!("----notify----");
-        for (peer_pid, peer) in self.connected_peers.iter() {
+        for (_peer_pid, peer) in self.connected_peers.iter() {
             peer.write_message(ClientMessage::CoordinatorMessage {
                 connection_id: self.id,
             });
         }
     }
-    fn send_leader_request(&mut self, id: u32) {
+    fn send_leader_request(&mut self, _id: u32) {
         let mut higher_alive = false;
         println!("MANDE LIDER");
         for (peer_pid, peer) in self.connected_peers.iter() {
@@ -316,6 +320,6 @@ impl Client {
         buf_reader.read_line(&mut client_pid)?;
         client_pid.pop();
         u32::from_str(&client_pid)
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, "bad client pid"))
+            .map_err(|_err| io::Error::new(io::ErrorKind::Other, "bad client pid"))
     }
 }

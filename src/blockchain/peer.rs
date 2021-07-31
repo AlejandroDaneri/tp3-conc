@@ -63,7 +63,7 @@ impl Peer {
 
     pub fn write_message(&self, msg: ClientMessage) -> io::Result<()> {
         match &self.sender {
-            Some(sender) => sender.send(msg).map_err(|err| {
+            Some(sender) => sender.send(msg).map_err(|_err| {
                 io::Error::new(io::ErrorKind::Other, "Error while sending message to peer")
             }),
             None => unreachable!(),
