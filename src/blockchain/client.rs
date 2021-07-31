@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime};
 
 use crate::blockchain::blockchain::Blockchain;
 use crate::blockchain::client_event::{ClientEvent, ClientEventReader, ClientMessage};
-use crate::blockchain::lock::CentralizedLock;
+use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
 use crate::blockchain::peer::{Peer, PeerIdType};
 use std::io::{BufRead, BufReader, Error, Write};
 use std::str::FromStr;
@@ -19,7 +19,7 @@ use std::str::FromStr;
 pub struct Client {
     id: u32,
     connected_peers: HashMap<PeerIdType, Peer>,
-    centralized_lock: Option<CentralizedLock>,
+    lock: CentralizedLock,
     blockchain: Blockchain,
     leader: PeerIdType,
 }
@@ -29,7 +29,7 @@ impl Client {
         Client {
             id,
             connected_peers: HashMap::new(),
-            centralized_lock: None, // tiene que saber cual es el lider
+            lock: CentralizedLock::new(), // tiene que saber cual es el lider
             blockchain: Blockchain::new(),
             leader: 0,
         }
@@ -129,28 +129,39 @@ impl Client {
                     self.connected_peers.insert(peer_pid, peer);
                 }
                 ClientEvent::PeerMessage { message, peer_id } => {
-                    if let Some(response) = self.process_message(message) {
+                    if let Some(response) = self.process_message(message, peer_id) {
                         if let Some(peer) = self.connected_peers.get(&peer_id) {
-                            peer.write_message(response);
+                            let sent = peer.write_message(response);
+                            if sent.is_err() {
+                                println!("Peer {} disconnected!", peer_id);
+                                // TODO: leader election
+                            }
                         }
                     }
                 }
                 ClientEvent::PeerDisconnected { peer_id } => {
                     self.connected_peers.remove(&peer_id);
                     println!("Peer {} removed", peer_id);
+                    // TODO: leader election
                 }
                 ClientEvent::UserInput { message } => {
-                    self.process_message(message);
+                    // TODO ¿Poner un process_input más especializado? ¿Usar otro enum de mensajes?
+                    self.process_message(message, self.id);
                 }
             }
         }
         Ok(())
     }
 
-    fn process_message(&mut self, message: ClientMessage) -> Option<ClientMessage> {
+    fn process_message(&mut self, message: ClientMessage, peer_id: u32) -> Option<ClientMessage> {
         println!("PROCESS: {:?}", message.serialize());
         match message {
             ClientMessage::ReadBlockchainRequest {} => {
+                if !self.lock.is_owned_by(peer_id) {
+                    return Some(ClientMessage::TodoMessage {
+                        msg: "rb lock not acquired previosly".to_owned(),
+                    });
+                }
                 if self.is_leader() {
                     Some(ClientMessage::ReadBlockchainResponse {
                         blockchain: self.blockchain.clone(),
@@ -168,13 +179,6 @@ impl Client {
             ClientMessage::WriteBlockchainRequest { transaction } => {
                 if self.is_leader() {
                     {
-                        //if not locked
-                        /*let stream_to_peer: Rc<RefCell<TcpStream>> = self.get_stream(port);
-                        let mut stream = &*stream_to_peer.borrow_mut();
-                        stream.write("You have the lock".as_bytes());
-                        stream.set_read_timeout(Some(Duration::new(1000, 0)));
-                        stream.read(&mut [0; 128]); //espera que le mande la transacion
-                        */
                         let valid = self.blockchain.validate(transaction.clone()); //esto deberia ser la transaccion que recibe cuando devuelve el lock
                         self.blockchain.add_transaction(transaction);
                     }
@@ -182,19 +186,19 @@ impl Client {
                 Some(ClientMessage::TodoMessage { msg: format!("wb") })
             }
 
-            // ClientEvent::LockRequest {
-            //     read_only,
-            //     request_id,
-            // } => {
-            //     // si me llega esto deberia ser lider
-            //     // soy lider?
-            //     // no, ToDo (error?)
-            //     // si ->
-            //     let coord_stream_cell: Rc<RefCell<TcpStream>> = self.get_stream(request_id);
-            //     let mut coord_stream = coord_stream_cell.borrow_mut();
-            //     let _result = self.lock.acquire(read_only, &mut coord_stream);
-            //     self.send_result(request_id, 0);
-            // }
+            ClientMessage::LockRequest {
+                read_only,
+                request_id,
+            } => {
+                // si me llega esto deberia ser lider
+                // soy lider?
+                if self.lock.acquire(request_id) == LockResult::Acquired {
+                    Some(ClientMessage::TodoMessage { msg: format!("lock acquired") })
+                } else {
+                    Some(ClientMessage::TodoMessage { msg: format!("lock failed") })
+                }
+            }
+
             ClientMessage::LeaderElectionRequest {
                 request_id,
                 timestamp: _,

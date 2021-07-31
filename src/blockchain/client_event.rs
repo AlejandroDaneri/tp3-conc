@@ -35,6 +35,10 @@ pub enum ClientMessage {
         request_id: u32,
         timestamp: SystemTime,
     },
+    LockRequest {
+        read_only: bool,
+        request_id: u32,
+    },
     OkMessage,
     CoordinatorMessage {
         connection_id: u32,
@@ -60,11 +64,20 @@ impl ClientMessage {
                 let time_epoch = timestamp.duration_since(std::time::UNIX_EPOCH).unwrap();
                 format!("le {} {}", request_id, time_epoch.as_secs())
             }
+            ClientMessage::LockRequest {
+                read_only,
+                request_id
+            } => {
+                if *read_only {
+                    format!("lock read {}", request_id)
+                } else {
+                    format!("lock write {}", request_id)
+                }
+            }
             ClientMessage::OkMessage {} => format!("ok"),
             ClientMessage::CoordinatorMessage { connection_id } => {
                 format!("coordinator {}", connection_id)
             }
-
             ClientMessage::StillAlive {} => format!("alive"),
             ClientMessage::TodoMessage { msg } => format!("TODO! {}", msg),
         }

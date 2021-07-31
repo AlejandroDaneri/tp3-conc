@@ -1,61 +1,58 @@
-use std::{
-    io::{BufRead, BufReader, Write},
-    net::TcpStream,
-};
+use crate::blockchain::peer::PeerIdType;
+use crate::blockchain::lock::LockResult::{Acquired, Locked, Released, ReleaseFailed};
+
+#[derive(PartialEq)]
+pub enum LockResult {
+    Acquired, Locked, Released, ReleaseFailed
+}
 
 pub trait Lock {
-    // fn acquire(&mut self, read_only: bool, stream: &mut TcpStream); para que compile
-    fn acquire(&mut self);
+    fn acquire(&mut self, peer_id: PeerIdType) -> LockResult;
 
-    // fn release(&mut self, stream: &mut TcpStream); para que compile
-    fn release(&mut self);
+    fn release(&mut self, peer_id: PeerIdType) -> LockResult;
+
+    fn reset(&mut self);
+
+    fn is_owned_by(&self, peer_id: PeerIdType) -> bool;
 }
 
 #[derive(Debug)]
 pub struct CentralizedLock {
-    coordinator_stream: TcpStream,
-    stream_reader: BufReader<TcpStream>,
+    peer_id: Option<PeerIdType>,
 }
 
 impl Lock for CentralizedLock {
     //envio pedido de acquire al coordinador
-    fn acquire(&mut self) {
-        self.coordinator_stream
-            .write_all(ACQUIRE_MSG.as_bytes())
-            .unwrap();
-
-        let mut buffer = String::new();
-        self.stream_reader.read_line(&mut buffer); // devuelve respuesta del coordinador
+    fn acquire(&mut self, peer_id: PeerIdType) -> LockResult {
+        if self.peer_id.is_none() {
+            self.peer_id = Some(peer_id);
+            Acquired
+        } else {
+            Locked
+        }
     }
 
     //envio pedido de release al coordinador
-    fn release(&mut self) {
-        self.coordinator_stream
-            .write_all(RELEASE_MSG.as_bytes())
-            .unwrap();
+    fn release(&mut self, peer_id: PeerIdType) -> LockResult {
+        if self.is_owned_by(peer_id) {
+            self.peer_id = None;
+            Released
+        } else {
+            ReleaseFailed
+        }
+    }
+
+    fn reset(&mut self) {
+        self.peer_id = None;
+    }
+
+    fn is_owned_by(&self, peer_id: PeerIdType) -> bool {
+        self.peer_id == Some(peer_id)
     }
 }
 
-const ACQUIRE_MSG: &str = "acquire\n";
-
-const RELEASE_MSG: &str = "release\n";
-
 impl CentralizedLock {
-    pub fn new(id: u32, coordinator_stream: TcpStream) -> CentralizedLock {
-        let mut new_lock = CentralizedLock {
-            coordinator_stream: {
-                match coordinator_stream.try_clone() {
-                    Ok(stream) => stream,
-                    Err(_e) => todo!(),
-                }
-            },
-            stream_reader: BufReader::new(coordinator_stream),
-        };
-
-        new_lock
-            .coordinator_stream
-            .write_all((id.to_string() + "\n").as_bytes());
-
-        new_lock
+    pub fn new() -> CentralizedLock {
+        CentralizedLock {peer_id: None}
     }
 }
