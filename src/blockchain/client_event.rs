@@ -1,19 +1,33 @@
-use std::fmt;
 use std::io::{BufRead, BufReader, Read};
 use std::net::TcpStream;
 use std::time::SystemTime;
 
-use super::blockchain::Transaction;
+use crate::blockchain::blockchain::{Blockchain, Transaction};
+use crate::blockchain::peer::PeerIdType;
 
 #[derive(Debug)]
 pub enum ClientEvent {
-    Connection { stream: TcpStream },
-    Message { message: ClientMessage },
+    Connection {
+        stream: TcpStream,
+    },
+    PeerMessage {
+        message: ClientMessage,
+        peer_id: PeerIdType,
+    },
+    PeerDisconnected {
+        peer_id: PeerIdType,
+    },
+    UserInput {
+        message: ClientMessage,
+    },
 }
 
 #[derive(Clone, Debug)]
 pub enum ClientMessage {
     ReadBlockchainRequest {},
+    ReadBlockchainResponse {
+        blockchain: Blockchain,
+    },
     WriteBlockchainRequest {
         transaction: Transaction,
     },
@@ -21,36 +35,38 @@ pub enum ClientMessage {
         request_id: u32,
         timestamp: SystemTime,
     },
-    ConnectionError {
-        connection_id: u32,
-    },
     OkMessage,
     CoordinatorMessage {
         connection_id: u32,
     },
     StillAlive {},
+    TodoMessage {
+        msg: String,
+    },
 }
 
-impl fmt::Display for ClientMessage {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl ClientMessage {
+    pub fn serialize(&self) -> String {
         match self {
-            ClientMessage::ReadBlockchainRequest {} => write!(f, "rb"),
-            ClientMessage::WriteBlockchainRequest { transaction } => write!(f, "wb {}", "test 10"),
+            ClientMessage::ReadBlockchainRequest {} => "rb".to_owned(),
+            ClientMessage::ReadBlockchainResponse { blockchain } => "blockhain".to_owned(),
+            ClientMessage::WriteBlockchainRequest { transaction } => {
+                format!("wb {}", transaction.serialize())
+            }
             ClientMessage::LeaderElectionRequest {
                 request_id,
                 timestamp,
             } => {
                 let time_epoch = timestamp.duration_since(std::time::UNIX_EPOCH).unwrap();
-                write!(f, "le {} {}", request_id, time_epoch.as_secs())
+                format!("le {} {}", request_id, time_epoch.as_secs())
             }
-            ClientMessage::ConnectionError { connection_id } => {
-                write!(f, "error")
-            }
-            ClientMessage::OkMessage {} => write!(f, "ok"),
+            ClientMessage::OkMessage {} => format!("ok"),
             ClientMessage::CoordinatorMessage { connection_id } => {
-                write!(f, "coordinator {}", connection_id)
+                format!("coordinator {}", connection_id)
             }
-            ClientMessage::StillAlive {} => write!(f, "alive"),
+
+            ClientMessage::StillAlive {} => format!("alive"),
+            ClientMessage::TodoMessage { msg } => format!("TODO! {}", msg),
         }
     }
 }

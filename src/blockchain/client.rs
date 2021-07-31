@@ -8,20 +8,20 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, SystemTime};
 
-use super::blockchain::Blockchain;
-use super::client_event::{ClientEvent, ClientEventReader, ClientMessage};
-use super::lock::CentralizedLock;
-use super::peer::Peer;
+use crate::blockchain::blockchain::Blockchain;
+use crate::blockchain::client_event::{ClientEvent, ClientEventReader, ClientMessage};
+use crate::blockchain::lock::CentralizedLock;
+use crate::blockchain::peer::{Peer, PeerIdType};
 use std::io::{BufRead, BufReader, Error, Write};
 use std::str::FromStr;
 
 #[derive(Debug)]
 pub struct Client {
     id: u32,
-    connected_peers: HashMap<u16, Peer>,
+    connected_peers: HashMap<PeerIdType, Peer>,
     centralized_lock: Option<CentralizedLock>,
     blockchain: Blockchain,
-    leader: u32,
+    leader: PeerIdType,
 }
 
 impl Client {
@@ -73,41 +73,27 @@ impl Client {
         Ok(())
     }
 
-    fn process_stdin(
-        cur_id: u32,
-        input_sender: Sender<(ClientEvent, Sender<String>)>,
-    ) -> Result<(), Error> {
+    fn process_stdin(cur_id: u32, input_sender: Sender<ClientEvent>) -> Result<(), Error> {
         let source = io::stdin();
         let message_reader = ClientEventReader::new(source, cur_id);
-        let (response_sender, response_receiver) = channel();
         for message in message_reader {
             println!("Enviando evento {:?}", message);
             input_sender
-                .send((ClientEvent::Message { message }, response_sender.clone()))
+                .send(ClientEvent::UserInput { message })
                 .unwrap();
-            let response = response_receiver
-                .recv()
-                .expect("sender closed unexpectedly");
-            println!("{}", response);
         }
         println!("Saliendo de la aplicación");
         Ok(())
     }
 
     fn listen_to_incoming(
-        client_sender: Sender<(ClientEvent, Sender<String>)>,
+        client_sender: Sender<ClientEvent>,
         listener: TcpListener,
     ) -> Result<(), Error> {
         for connection in listener.incoming() {
             let stream = connection?;
-            let mut stream_clone = stream.try_clone().unwrap();
             let event = ClientEvent::Connection { stream };
-            let (response_sender, response_receiver) = channel();
-            client_sender
-                .send((event, response_sender.clone()))
-                .unwrap();
-            let response = response_receiver.recv().unwrap();
-            stream_clone.write(response.as_bytes())?;
+            client_sender.send(event).unwrap();
         }
         Ok(())
     }
@@ -115,18 +101,15 @@ impl Client {
     fn do_broadcasting(
         port_from: u16,
         port_to: u16,
-        client_sender: &Sender<(ClientEvent, Sender<String>)>,
+        client_sender: &Sender<ClientEvent>,
         own_port: u16,
     ) -> Result<(), Error> {
         for stream in Client::broadcast(own_port, port_from, port_to) {
             let mut stream_clone = stream.try_clone()?;
             let event = ClientEvent::Connection { stream };
             let (response_sender, response_receiver) = channel();
-            client_sender
-                .send((event, response_sender.clone()))
-                .unwrap();
-            let response: String = response_receiver.recv().unwrap(); // TODO: <- se traba aca despues de la primer iteracion
-
+            client_sender.send(event).unwrap();
+            let response: String = response_receiver.recv().unwrap();
             stream_clone.write(response.as_bytes())?;
         }
         Ok(())
@@ -134,64 +117,53 @@ impl Client {
 
     fn process_incoming_events(
         &mut self,
-        sender: Sender<(ClientEvent, Sender<String>)>,
-        receiver: Receiver<(ClientEvent, Sender<String>)>,
-    ) {
+        sender: Sender<ClientEvent>,
+        receiver: Receiver<ClientEvent>,
+    ) -> io::Result<()> {
         //proceso mensajes que me llegan
-        while let Ok((event, response_sender)) = receiver.recv() {
-            if let Some(response) = self.process_event(event, &sender) {
-                response_sender.send(response);
-            }
-        }
-    }
-
-    fn process_event(
-        &mut self,
-        event: ClientEvent,
-        sender: &Sender<(ClientEvent, Sender<String>)>,
-    ) -> Option<String> {
-        println!("My ID: {}", self.id);
-        match event {
-            ClientEvent::Connection { mut stream } => {
-                println!("NEW CONNECTION");
-                let peer_pid = self.exchange_pids(&mut stream).ok()?;
-                let peer = Peer::new(peer_pid, stream, sender.clone());
-                self.connected_peers.insert(peer_pid as u16, peer);
-                if self.leader != 0 {
-                    let message = format!("coordinator {}", self.leader);
-                    return Some(message);
+        while let Ok(event) = receiver.recv() {
+            match event {
+                ClientEvent::Connection { mut stream } => {
+                    let peer_pid = self.exchange_pids(&mut stream)?;
+                    let peer = Peer::new(peer_pid, stream, sender.clone());
+                    self.connected_peers.insert(peer_pid, peer);
                 }
-                None
+                ClientEvent::PeerMessage { message, peer_id } => {
+                    if let Some(response) = self.process_message(message) {
+                        if let Some(peer) = self.connected_peers.get(&peer_id) {
+                            peer.write_message(response);
+                        }
+                    }
+                }
+                ClientEvent::PeerDisconnected { peer_id } => {
+                    self.connected_peers.remove(&peer_id);
+                    println!("Peer {} removed", peer_id);
+                }
+                ClientEvent::UserInput { message } => {
+                    self.process_message(message);
+                }
             }
-            ClientEvent::Message { message } => self.process_message(message),
         }
+        Ok(())
     }
 
-    fn process_message(&mut self, message: ClientMessage) -> Option<String> {
-        let mut response = None;
-        // while response.is_none() {
-        println!("Leader: {}", self.leader);
-        let peer_message = message.clone();
-        response = self.process_message_remote(peer_message);
-        if response.is_none() {
-            println!("INTENTE DE NUEVO MAS TARDE");
-            self.send_leader_request(self.id);
-        }
-        println!("Message: {:?} was answered with: {:?}", message, response);
-        std::thread::sleep(Duration::from_secs(1));
-        // }
-        response
-    }
-
-    fn process_message_remote(&mut self, message: ClientMessage) -> Option<String> {
-        println!("PROCESS: {:?}", message);
+    fn process_message(&mut self, message: ClientMessage) -> Option<ClientMessage> {
+        println!("PROCESS: {:?}", message.serialize());
         match message {
             ClientMessage::ReadBlockchainRequest {} => {
                 if self.is_leader() {
-                    Some(self.blockchain.to_string())
+                    Some(ClientMessage::ReadBlockchainResponse {
+                        blockchain: self.blockchain.clone(),
+                    })
                 } else {
-                    self.send_request_to_leader(message)
+                    Some(ClientMessage::TodoMessage {
+                        msg: "rb with no leader".to_owned(),
+                    })
                 }
+            }
+            ClientMessage::ReadBlockchainResponse { blockchain } => {
+                println!("Blockchain: {}", blockchain);
+                None
             }
             ClientMessage::WriteBlockchainRequest { transaction } => {
                 if self.is_leader() {
@@ -207,7 +179,7 @@ impl Client {
                         self.blockchain.add_transaction(transaction);
                     }
                 }
-                Some(self.blockchain.to_string())
+                Some(ClientMessage::TodoMessage { msg: format!("wb") })
             }
 
             // ClientEvent::LockRequest {
@@ -229,39 +201,35 @@ impl Client {
             } => {
                 //TODO: usar timestamp
                 if request_id > self.id {
-                    return Some("Yo no puedo ser lider".to_owned());
+                    return Some(ClientMessage::TodoMessage {
+                        msg: "Yo no puedo ser lider".to_owned(),
+                    });
                 }
-                if self.leader != 0 {
-                    println!("{:?}", self.connected_peers);
-                    if !self.is_leader() {
-                        let leader = self.connected_peers.get(&(self.leader as u16)).unwrap();
-                        let response = leader.write_message(ClientMessage::StillAlive {});
-                        if response.is_ok() {
-                            return Some(format!("el lider sigue siendo: {}", self.leader));
-                        }
-                    } else {
-                        return Some("Bully OK".to_owned());
-                    }
+                let leader = self.connected_peers.get(&(self.leader)).unwrap();
+                let response = leader.write_message(ClientMessage::StillAlive {});
+                if response.is_ok() {
+                    return Some(ClientMessage::TodoMessage {
+                        msg: format!("el lider sigue siendo: {}", self.leader),
+                    });
                 }
-                Client::send_leader_request(self, self.id); // TODO: hacer en otro thread?
-                Some("Bully OK".to_owned())
+                //thread::spawn(move || Client::send_leader_request(self, self.id));
+                Some(ClientMessage::TodoMessage {
+                    msg: "Bully OK".to_owned(),
+                })
             }
-
-            ClientMessage::ConnectionError { connection_id } => {
-                let id = connection_id as u16;
-                self.connected_peers.remove(&id);
-                Some(format!("Disconnected {}", id))
-            }
-            ClientMessage::OkMessage {} => Some("OkResponse".to_owned()),
+            ClientMessage::OkMessage {} => None,
 
             ClientMessage::CoordinatorMessage { connection_id: id } => {
                 self.update_coordinator(id);
                 if self.leader != self.id {
                     println!("New leader: {}", id);
                 }
-                Some("CoordinatorResponse".to_owned())
+                Some(ClientMessage::TodoMessage {
+                    msg: format!("CoordinatorUpdate {}", id),
+                })
             }
-            ClientMessage::StillAlive {} => Some("StillAliveResponse".to_owned()),
+            ClientMessage::StillAlive {} => None,
+            ClientMessage::TodoMessage { msg: _msg } => None,
         }
     }
 
@@ -304,7 +272,8 @@ impl Client {
         let mut higher_alive = false;
         println!("MANDE LIDER");
         for (peer_pid, peer) in self.connected_peers.iter() {
-            if peer_pid > &(self.id as u16) {
+            if peer_pid > &(self.id) {
+                println!("hay peer que pueden ser lider");
                 let response = peer.write_message(ClientMessage::LeaderElectionRequest {
                     request_id: self.id,
                     timestamp: SystemTime::now(),
@@ -324,13 +293,15 @@ impl Client {
         self.notify_minions(self.id);
     }
 
-    fn send_request_to_leader(&self, message: ClientMessage) -> Option<String> {
-        if self.leader != 0 {
-            let leader = self.leader as u16;
-            let leader_peer = self.connected_peers.get(&leader)?;
-            return leader_peer.write_message(message).ok();
+    fn send_request_to_leader(&self, message: ClientMessage) -> io::Result<()> {
+        if let Some(leader_peer) = self.connected_peers.get(&self.leader) {
+            leader_peer.write_message(message)
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Request sent to none leader",
+            ))
         }
-        None
     }
 
     fn get_leader_id(&mut self, _id: u32, _result: u32) -> u32 {

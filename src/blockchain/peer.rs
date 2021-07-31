@@ -1,62 +1,80 @@
 use std::io;
+use std::io::Write;
 use std::net::TcpStream;
-use std::sync::mpsc::{channel, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{channel, Receiver, Sender};
+
+use super::client_event::{ClientEvent, ClientEventReader, ClientMessage};
 use std::thread;
 
-use super::client_event::ClientEvent;
-use crate::blockchain::client_event::{ClientEventReader, ClientMessage};
-use std::io::Write;
+pub type PeerIdType = u32;
 
 #[derive(Debug)]
 pub struct Peer {
-    id: u32,
-    join_handler: thread::JoinHandle<()>,
-    stream: Arc<Mutex<TcpStream>>,
+    id: PeerIdType,
+    recv_thread: Option<thread::JoinHandle<()>>,
+    send_thread: Option<thread::JoinHandle<()>>,
+    sender: Option<Sender<ClientMessage>>,
 }
 
 impl Peer {
-    pub fn new(id: u32, stream: TcpStream, sender: Sender<(ClientEvent, Sender<String>)>) -> Self {
-        let stream = Arc::new(Mutex::new(stream));
-        let stream_clone = stream.clone();
+    pub fn new(id: u32, stream: TcpStream, sender: Sender<ClientEvent>) -> Self {
+        let stream_clone = stream.try_clone().unwrap();
+        let (local_sender, receiver) = channel();
 
-        let join_handler = thread::spawn(move || {
-            Peer::recv_messages(id, stream_clone, sender).unwrap();
-        });
+        let recv_thread = Some(thread::spawn(move || {
+            Peer::recv_messages(id, stream, sender).unwrap();
+        }));
+
+        let send_thread = Some(thread::spawn(move || {
+            Peer::send_messages(stream_clone, receiver).unwrap();
+        }));
         Peer {
             id,
-            join_handler,
-            stream,
+            recv_thread,
+            send_thread,
+            sender: Some(local_sender),
         }
     }
 
     fn recv_messages(
-        id: u32,
-        stream: Arc<Mutex<TcpStream>>,
-        sender: Sender<(ClientEvent, Sender<String>)>,
+        peer_id: u32,
+        stream: TcpStream,
+        sender: Sender<ClientEvent>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let (response_sender, response_receiver) = channel();
-        let stream_clone = stream.lock().unwrap().try_clone().unwrap();
-        let message_reader = ClientEventReader::new(stream_clone, id);
+        let message_reader = ClientEventReader::new(stream, peer_id);
         for message in message_reader {
-            sender.send((ClientEvent::Message { message }, response_sender.clone()))?;
-            let response = response_receiver.recv()?;
-            if let Ok(mut stream) = stream.lock() {
-                stream.write(response.as_bytes())?;
-            }
+            sender.send(ClientEvent::PeerMessage { message, peer_id })?;
         }
         println!("No more events!");
-        // let message = ClientMessage::ConnectionError { connection_id: id };
-        // sender.send((ClientEvent::Message { message }, response_sender))?;
+        sender.send(ClientEvent::PeerDisconnected { peer_id })?;
         Ok(())
     }
 
-    pub fn write_message(&self, msg: ClientMessage) -> Result<String, io::Error> {
-        //mandar msg esperar respuesta , si no respone devolver error
-        let response = format!("{}\n", msg);
-        if let Ok(mut stream) = self.stream.lock() {
-            stream.write(response.as_bytes())?;
+    fn send_messages(
+        mut stream: TcpStream,
+        receiver: Receiver<ClientMessage>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for event in receiver {
+            let buf = event.serialize();
+            stream.write(buf.as_bytes())?;
         }
-        Ok(response)
+        Ok(())
+    }
+
+    pub fn write_message(&self, msg: ClientMessage) -> io::Result<()> {
+        match &self.sender {
+            Some(sender) => sender.send(msg).map_err(|err| {
+                io::Error::new(io::ErrorKind::Other, "Error while sending message to peer")
+            }),
+            None => unreachable!(),
+        }
+    }
+}
+
+impl Drop for Peer {
+    fn drop(&mut self) {
+        self.sender.take();
+        self.recv_thread.take().unwrap().join();
+        self.send_thread.take().unwrap().join();
     }
 }

@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::fmt;
 use std::hash::Hasher;
 use std::str::FromStr;
@@ -33,6 +33,13 @@ impl Transaction {
         }
     }
 
+    pub fn serialize(&self) -> String {
+        match self {
+            Transaction::Insert(data) => format!("insert {}", data.serialize()),
+            Transaction::Remove(key) => format!("remove {}", key),
+        }
+    }
+
     pub fn parse(tokens: &mut dyn Iterator<Item = &str>) -> Option<Self> {
         let action = tokens.next();
         match action {
@@ -40,7 +47,7 @@ impl Transaction {
             Some("remove") => {
                 let name = tokens.next()?;
                 Some(Transaction::Remove(name.to_owned()))
-            },
+            }
             _ => None,
         }
     }
@@ -56,6 +63,10 @@ impl TransactionData {
     pub fn new(student: &str, score: u16) -> Self {
         let student = student.to_owned();
         Self { student, score }
+    }
+
+    pub fn serialize(&self) -> String {
+        format!("{} {}", self.student, self.score)
     }
 
     pub fn parse(tokens: &mut dyn Iterator<Item = &str>) -> Option<Self> {
@@ -116,7 +127,7 @@ fn generate_hash(transaction: Transaction, previous_hash: u64) -> u64 {
     hasher.write_u64(previous_hash);
     hasher.finish()
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Blockchain {
     blocks: Vec<Block>,
 }
@@ -134,7 +145,7 @@ impl Blockchain {
     }
 
     pub fn add_transaction(&mut self, transaction: Transaction) {
-        let prev_hash = if let Some(last) = self.get_last(){
+        let prev_hash = if let Some(last) = self.get_last() {
             last.hash
         } else {
             0
@@ -161,7 +172,7 @@ impl fmt::Display for Blockchain {
                 Transaction::Insert(data) => {
                     let key = data.student.clone();
                     entries.insert(key, data.score);
-                },
+                }
                 Transaction::Remove(student) => {
                     entries.remove(student);
                 }
