@@ -1,12 +1,9 @@
 use std::io;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
-use std::thread::JoinHandle;
 
 use crate::blockchain::blockchain::Blockchain;
-use crate::blockchain::client_event::{
-    ClientEvent, ClientEventReader, ClientMessage, LeaderMessage,
-};
+use crate::blockchain::client_event::{ClientEvent, ClientMessage, LeaderMessage};
 use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
 use crate::blockchain::peer::PeerIdType;
 use crate::handler::connection_handler::ConnectionHandler;
@@ -178,7 +175,7 @@ impl Client {
                 Some(ClientMessage::TodoMessage { msg: format!("wb") })
             }
 
-            ClientMessage::LockRequest { read_only } => {
+            ClientMessage::LockRequest { read_only: _ } => {
                 // si me llega esto deberia ser lider
                 // soy lider?
                 if self.lock.acquire(peer_id) == LockResult::Acquired {
