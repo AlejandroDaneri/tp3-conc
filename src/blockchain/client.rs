@@ -1,9 +1,8 @@
-use std::collections::HashMap;
 use std::io;
+use std::io::Error;
 use std::net::SocketAddr;
 use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc::{channel, Receiver, Sender};
-
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{SystemTime};
@@ -11,14 +10,12 @@ use std::time::{SystemTime};
 use crate::blockchain::blockchain::Blockchain;
 use crate::blockchain::client_event::{ClientEvent, ClientEventReader, ClientMessage};
 use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
-use crate::blockchain::peer::{Peer, PeerIdType};
-use std::io::{BufRead, BufReader, Error, Write};
-use std::str::FromStr;
+use crate::blockchain::peer::{PeerIdType};
+use crate::handler::peer_handler::PeerHandler;
 
 #[derive(Debug)]
 pub struct Client {
     id: u32,
-    connected_peers: HashMap<PeerIdType, Peer>,
     lock: CentralizedLock,
     blockchain: Blockchain,
     leader: PeerIdType,
@@ -28,7 +25,6 @@ impl Client {
     pub fn new(id: u32) -> Self {
         Client {
             id,
-            connected_peers: HashMap::new(),
             lock: CentralizedLock::new(), // tiene que saber cual es el lider
             blockchain: Blockchain::new(),
             leader: 0,
@@ -66,8 +62,12 @@ impl Client {
 
         thread::spawn(move || -> io::Result<()> { Client::process_stdin(cur_id, input_sender) });
 
-        self.process_incoming_events(sender, receiver);
+        let (peer_handler_sender, peer_handler_receiver) = channel();
+        let peer_handler = PeerHandler::new(self.id,sender.clone(), peer_handler_receiver);
 
+        self.dispatch_messages( receiver, peer_handler_sender);
+
+        drop(peer_handler);
         listener_handle.join().unwrap()?;
 
         Ok(())
@@ -75,7 +75,7 @@ impl Client {
 
     fn process_stdin(cur_id: u32, input_sender: Sender<ClientEvent>) -> Result<(), Error> {
         let source = io::stdin();
-        let message_reader = ClientEventReader::new(source, cur_id);
+        let message_reader = ClientEventReader::new(source);
         for message in message_reader {
             println!("Enviando evento {:?}", message);
             input_sender
@@ -111,34 +111,21 @@ impl Client {
         Ok(())
     }
 
-    fn process_incoming_events(
+    fn dispatch_messages(
         &mut self,
-        sender: Sender<ClientEvent>,
-        receiver: Receiver<ClientEvent>,
+        event_receiver: Receiver<ClientEvent>,
+        peer_sender: Sender<ClientEvent>,
     ) -> io::Result<()> {
         //proceso mensajes que me llegan
-        while let Ok(event) = receiver.recv() {
+        while let Ok(event) = event_receiver.recv() {
             match event {
-                ClientEvent::Connection { mut stream } => {
-                    let peer_pid = self.exchange_pids(&mut stream)?;
-                    let peer = Peer::new(peer_pid, stream, sender.clone());
-                    self.connected_peers.insert(peer_pid, peer);
+                ClientEvent::Connection { .. } | ClientEvent::PeerDisconnected { ..} => {
+                    peer_sender.send(event);
                 }
                 ClientEvent::PeerMessage { message, peer_id } => {
                     if let Some(response) = self.process_message(message, peer_id) {
-                        if let Some(peer) = self.connected_peers.get(&peer_id) {
-                            let sent = peer.write_message(response);
-                            if sent.is_err() {
-                                println!("Peer {} disconnected!", peer_id);
-                                // TODO: leader election
-                            }
-                        }
+                        peer_sender.send(ClientEvent::PeerMessage {peer_id, message: response} );
                     }
-                }
-                ClientEvent::PeerDisconnected { peer_id } => {
-                    self.connected_peers.remove(&peer_id);
-                    println!("Peer {} removed", peer_id);
-                    // TODO: leader election
                 }
                 ClientEvent::UserInput { message } => {
                     // TODO ¿Poner un process_input más especializado? ¿Usar otro enum de mensajes?
@@ -183,15 +170,12 @@ impl Client {
             }
 
             ClientMessage::LockRequest {
-                read_only: _,
-                request_id,
+                read_only,
             } => {
                 // si me llega esto deberia ser lider
                 // soy lider?
-                if self.lock.acquire(request_id) == LockResult::Acquired {
-                    Some(ClientMessage::TodoMessage {
-                        msg: format!("lock acquired"),
-                    })
+                if self.lock.acquire(peer_id) == LockResult::Acquired {
+                    Some(ClientMessage::TodoMessage { msg: format!("lock acquired") })
                 } else {
                     Some(ClientMessage::TodoMessage {
                         msg: format!("lock failed"),
@@ -209,7 +193,7 @@ impl Client {
                         msg: "Yo no puedo ser lider".to_owned(),
                     });
                 }
-                let leader = self.connected_peers.get(&(self.leader)).unwrap();
+                /*let leader = self.connected_peers.get(&(self.leader)).unwrap();
                 let response = leader.write_message(ClientMessage::StillAlive {});
                 if response.is_ok() {
                     return Some(ClientMessage::TodoMessage {
@@ -217,6 +201,7 @@ impl Client {
                     });
                 }
                 //thread::spawn(move || Client::send_leader_request(self, self.id));
+                */
                 Some(ClientMessage::TodoMessage {
                     msg: "Bully OK".to_owned(),
                 })
@@ -266,15 +251,20 @@ impl Client {
 
     fn notify_minions(&self, _id: u32) {
         println!("----notify----");
-        for (_peer_pid, peer) in self.connected_peers.iter() {
+        /*
+        Crear un evento que pueda ser enviado al peer_handler
+
+        for (peer_pid, peer) in self.connected_peers.iter() {
+
             peer.write_message(ClientMessage::CoordinatorMessage {
                 connection_id: self.id,
             });
-        }
+        }*/
     }
-    fn send_leader_request(&mut self, _id: u32) {
-        let mut higher_alive = false;
+
+    fn send_leader_request(&mut self, id: u32) {
         println!("MANDE LIDER");
+        /*let mut higher_alive = false;
         for (peer_pid, peer) in self.connected_peers.iter() {
             if peer_pid > &(self.id) {
                 println!("hay peer que pueden ser lider");
@@ -295,31 +285,22 @@ impl Client {
         self.leader = self.id;
         println!("SOY NUEVO LIDER");
         self.notify_minions(self.id);
+        */
     }
 
     fn send_request_to_leader(&self, message: ClientMessage) -> io::Result<()> {
-        if let Some(leader_peer) = self.connected_peers.get(&self.leader) {
+        /*if let Some(leader_peer) = self.connected_peers.get(&self.leader) {
             leader_peer.write_message(message)
         } else {
             Err(io::Error::new(
                 io::ErrorKind::Other,
                 "Request sent to none leader",
             ))
-        }
+        }*/
+        unimplemented!()
     }
 
     fn get_leader_id(&mut self, _id: u32, _result: u32) -> u32 {
         0
-    }
-
-    fn exchange_pids(&self, stream: &mut TcpStream) -> io::Result<u32> {
-        let pid_msg = format!("{}\n", self.id);
-        stream.write(pid_msg.as_bytes())?;
-        let mut buf_reader = BufReader::new(stream);
-        let mut client_pid = String::new();
-        buf_reader.read_line(&mut client_pid)?;
-        client_pid.pop();
-        u32::from_str(&client_pid)
-            .map_err(|_err| io::Error::new(io::ErrorKind::Other, "bad client pid"))
     }
 }

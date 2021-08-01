@@ -41,7 +41,7 @@ impl Peer {
         stream: TcpStream,
         sender: Sender<ClientEvent>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let message_reader = ClientEventReader::new(stream, peer_id);
+        let message_reader = ClientEventReader::new(stream);
         for message in message_reader {
             sender.send(ClientEvent::PeerMessage { message, peer_id })?;
         }
@@ -63,7 +63,7 @@ impl Peer {
 
     pub fn write_message(&self, msg: ClientMessage) -> io::Result<()> {
         match &self.sender {
-            Some(sender) => sender.send(msg).map_err(|_err| {
+            Some(sender) => sender.send(msg).map_err(|_| {
                 io::Error::new(io::ErrorKind::Other, "Error while sending message to peer")
             }),
             None => unreachable!(),
@@ -74,7 +74,7 @@ impl Peer {
 impl Drop for Peer {
     fn drop(&mut self) {
         self.sender.take();
-        self.recv_thread.take().unwrap().join();
-        self.send_thread.take().unwrap().join();
+        let _ = self.recv_thread.take().unwrap().join();
+        let _ = self.send_thread.take().unwrap().join();
     }
 }

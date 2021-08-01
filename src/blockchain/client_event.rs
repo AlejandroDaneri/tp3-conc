@@ -39,7 +39,6 @@ pub enum ClientMessage {
     },
     LockRequest {
         read_only: bool,
-        request_id: u32,
     },
     OkMessage,
     CoordinatorMessage {
@@ -70,12 +69,11 @@ impl ClientMessage {
             }
             ClientMessage::LockRequest {
                 read_only,
-                request_id,
             } => {
                 if *read_only {
-                    format!("lock read {}", request_id)
+                    "lock read".to_owned()
                 } else {
-                    format!("lock write {}", request_id)
+                    "lock write".to_owned()
                 }
             }
             ClientMessage::OkMessage {} => format!("ok"),
@@ -117,10 +115,8 @@ impl ClientMessage {
 
     fn parse_lock_req(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
         let read_only_str = tokens.next()?;
-        let request_id_str = tokens.next()?;
         Some(ClientMessage::LockRequest {
-            read_only: read_only_str.parse::<bool>().ok()?,
-            request_id: request_id_str.parse::<u32>().ok()?,
+            read_only: read_only_str.parse::<bool>().ok()?
         })
     }
 
@@ -140,13 +136,12 @@ impl ClientMessage {
 
 pub struct ClientEventReader<R> {
     reader: BufReader<R>,
-    client_id: u32,
 }
 
 impl<R: Read> ClientEventReader<R> {
-    pub fn new(source: R, client_id: u32) -> Self {
+    pub fn new(source: R) -> Self {
         let reader = BufReader::new(source);
-        Self { reader, client_id }
+        Self { reader }
     }
 }
 
