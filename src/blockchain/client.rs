@@ -5,12 +5,12 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::{SystemTime};
+use std::time::SystemTime;
 
 use crate::blockchain::blockchain::Blockchain;
 use crate::blockchain::client_event::{ClientEvent, ClientEventReader, ClientMessage};
 use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
-use crate::blockchain::peer::{PeerIdType};
+use crate::blockchain::peer::PeerIdType;
 use crate::handler::peer_handler::PeerHandler;
 
 #[derive(Debug)]
@@ -59,13 +59,15 @@ impl Client {
         let cur_id = 0; // receiver.recv()?
 
         let input_sender = sender.clone();
+        let leader_channel = sender.clone();
 
         thread::spawn(move || -> io::Result<()> { Client::process_stdin(cur_id, input_sender) });
+        thread::spawn(move || Client::leader_processor(leader_channel));
 
         let (peer_handler_sender, peer_handler_receiver) = channel();
-        let peer_handler = PeerHandler::new(self.id,sender.clone(), peer_handler_receiver);
+        let peer_handler = PeerHandler::new(self.id, sender.clone(), peer_handler_receiver);
 
-        self.dispatch_messages( receiver, peer_handler_sender);
+        self.dispatch_messages(receiver, peer_handler_sender);
 
         drop(peer_handler);
         listener_handle.join().unwrap()?;
@@ -119,18 +121,35 @@ impl Client {
         //proceso mensajes que me llegan
         while let Ok(event) = event_receiver.recv() {
             match event {
-                ClientEvent::Connection { .. } | ClientEvent::PeerDisconnected { ..} => {
+                ClientEvent::Connection { .. } | ClientEvent::PeerDisconnected { .. } => {
                     peer_sender.send(event);
                 }
                 ClientEvent::PeerMessage { message, peer_id } => {
                     if let Some(response) = self.process_message(message, peer_id) {
-                        peer_sender.send(ClientEvent::PeerMessage {peer_id, message: response} );
+                        peer_sender.send(ClientEvent::PeerMessage {
+                            peer_id,
+                            message: response,
+                        });
                     }
                 }
                 ClientEvent::UserInput { message } => {
                     // TODO ¿Poner un process_input más especializado? ¿Usar otro enum de mensajes?
                     self.process_message(message, self.id);
                 }
+                ClientEvent::LeaderEvent { message } => match message {
+                    ClientMessage::ReadBlockchainRequest {} => todo!(),
+                    ClientMessage::ReadBlockchainResponse { blockchain } => todo!(),
+                    ClientMessage::WriteBlockchainRequest { transaction } => todo!(),
+                    ClientMessage::LockRequest { read_only } => todo!(),
+                    ClientMessage::StillAlive {} => todo!(),
+                    ClientMessage::LeaderElectionRequest {
+                        request_id,
+                        timestamp,
+                    } => todo!(),
+                    ClientMessage::OkMessage => todo!(),
+                    ClientMessage::CoordinatorMessage { connection_id } => todo!(),
+                    ClientMessage::TodoMessage { msg } => todo!(),
+                },
             }
         }
         Ok(())
@@ -169,13 +188,13 @@ impl Client {
                 Some(ClientMessage::TodoMessage { msg: format!("wb") })
             }
 
-            ClientMessage::LockRequest {
-                read_only,
-            } => {
+            ClientMessage::LockRequest { read_only } => {
                 // si me llega esto deberia ser lider
                 // soy lider?
                 if self.lock.acquire(peer_id) == LockResult::Acquired {
-                    Some(ClientMessage::TodoMessage { msg: format!("lock acquired") })
+                    Some(ClientMessage::TodoMessage {
+                        msg: format!("lock acquired"),
+                    })
                 } else {
                     Some(ClientMessage::TodoMessage {
                         msg: format!("lock failed"),
@@ -245,7 +264,7 @@ impl Client {
             Err(_err) => Err(io::Error::new(io::ErrorKind::Other, "Pool not available")),
         }
     }
-
+    fn leader_processor(channel: Sender<ClientEvent>) {}
     fn send_result(&mut self, _id: u32, _result: u32) {}
     fn send_modifications(&mut self, _id: u32, _result: u32) {}
 
