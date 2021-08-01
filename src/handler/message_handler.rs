@@ -1,11 +1,12 @@
 use std::io;
 use std::sync::mpsc::{Receiver, Sender};
-use std::thread;
+use std::sync::{Arc, Condvar, Mutex};
 
 use crate::blockchain::blockchain::Blockchain;
 use crate::blockchain::client_event::{ClientEvent, ClientMessage};
 use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
 use crate::blockchain::peer::PeerIdType;
+use std::thread;
 
 #[derive(Debug)]
 pub struct MessageHandler {
@@ -23,9 +24,10 @@ impl MessageHandler {
     pub fn new(
         message_receiver: Receiver<(ClientMessage, PeerIdType)>,
         peer_sender: Sender<ClientEvent>,
+        leader_notify: Arc<(Mutex<bool>, Condvar)>,
     ) -> Self {
         let thread_handle = Some(thread::spawn(move || {
-            MessageHandler::run(message_receiver, peer_sender).unwrap();
+            MessageHandler::run(message_receiver, peer_sender, leader_notify).unwrap();
         }));
         MessageHandler { thread_handle }
     }
@@ -33,9 +35,16 @@ impl MessageHandler {
     fn run(
         message_receiver: Receiver<(ClientMessage, PeerIdType)>,
         peer_sender: Sender<ClientEvent>,
+        leader_notify: Arc<(Mutex<bool>, Condvar)>,
     ) -> io::Result<()> {
         let mut processor = MessageProcessor::new();
         for (message, peer_id) in message_receiver {
+            let (mutex, cv) = &*leader_notify;
+            println!("Checking leader");
+            if let Ok(mut leader_lock) = mutex.lock() {
+                let _guard = cv.wait_while(leader_lock, |waiting| *waiting).unwrap();
+            }
+            println!("Leader available");
             if let Some(response) = processor.process_message(message, peer_id) {
                 peer_sender
                     .send(ClientEvent::PeerMessage {
