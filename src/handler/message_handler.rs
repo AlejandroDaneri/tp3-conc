@@ -3,7 +3,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 
 use crate::blockchain::blockchain::Blockchain;
-use crate::blockchain::client_event::{ClientEvent, ClientEventReader, ClientMessage};
+use crate::blockchain::client_event::{ClientEvent, ClientMessage};
 use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
 use crate::blockchain::peer::PeerIdType;
 
