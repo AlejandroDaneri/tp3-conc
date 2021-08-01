@@ -20,15 +20,15 @@ impl PeerHandler {
         request_receiver: Receiver<ClientEvent>,
     ) -> Self {
         let thread_handle = Some(thread::spawn(move || {
-            PeerHandler::run(own_id, response_sender, request_receiver).unwrap();
+            PeerHandler::run(own_id, request_receiver, response_sender).unwrap();
         }));
         PeerHandler { thread_handle }
     }
 
     fn run(
         own_id: PeerIdType,
-        sender: Sender<ClientEvent>,
         receiver: Receiver<ClientEvent>,
+        sender: Sender<ClientEvent>,
     ) -> io::Result<()> {
         let mut connected_peers = HashMap::new();
         for event in receiver {
