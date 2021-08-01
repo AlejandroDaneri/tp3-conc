@@ -119,6 +119,9 @@ pub enum LeaderMessage {
         connection_id: u32,
     },
     StillAlive {},
+    TodoMessage {
+        msg: String,
+    },
 }
 impl LeaderMessage {
     pub fn serialize(&self) -> String {
@@ -136,10 +139,11 @@ impl LeaderMessage {
                 format!("coordinator {}", connection_id)
             }
             LeaderMessage::StillAlive {} => format!("alive"),
+            LeaderMessage::TodoMessage { msg: _ } => todo!(),
         }
     }
 
-    pub fn deserialize(line: String) -> Option<ClientMessage> {
+    pub fn deserialize(line: String) -> Option<LeaderMessage> {
         let mut tokens = line.split_whitespace();
         let action = tokens.next();
         match action {

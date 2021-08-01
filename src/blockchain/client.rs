@@ -5,10 +5,12 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::SystemTime;
+
 
 use crate::blockchain::blockchain::Blockchain;
-use crate::blockchain::client_event::{ClientEvent, ClientEventReader, ClientMessage};
+use crate::blockchain::client_event::{
+    ClientEvent, ClientEventReader, ClientMessage, LeaderMessage,
+};
 use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
 use crate::blockchain::peer::PeerIdType;
 use crate::handler::peer_handler::PeerHandler;
@@ -75,7 +77,7 @@ impl Client {
         Ok(())
     }
 
-    fn process_stdin(cur_id: u32, input_sender: Sender<ClientEvent>) -> Result<(), Error> {
+    fn process_stdin(_cur_id: u32, input_sender: Sender<ClientEvent>) -> Result<(), Error> {
         let source = io::stdin();
         let message_reader = ClientEventReader::new(source);
         for message in message_reader {
@@ -136,25 +138,61 @@ impl Client {
                     // TODO ¿Poner un process_input más especializado? ¿Usar otro enum de mensajes?
                     self.process_message(message, self.id);
                 }
-                ClientEvent::LeaderEvent { message } => match message {
-                    ClientMessage::ReadBlockchainRequest {} => todo!(),
-                    ClientMessage::ReadBlockchainResponse { blockchain } => todo!(),
-                    ClientMessage::WriteBlockchainRequest { transaction } => todo!(),
-                    ClientMessage::LockRequest { read_only } => todo!(),
-                    ClientMessage::StillAlive {} => todo!(),
-                    ClientMessage::LeaderElectionRequest {
-                        request_id,
-                        timestamp,
-                    } => todo!(),
-                    ClientMessage::OkMessage => todo!(),
-                    ClientMessage::CoordinatorMessage { connection_id } => todo!(),
-                    ClientMessage::TodoMessage { msg } => todo!(),
-                },
+                ClientEvent::LeaderEvent { message } => {
+                    self.process_leader_message(message);
+                }
             }
         }
         Ok(())
     }
+    fn process_leader_message(&mut self, message: LeaderMessage) -> Option<LeaderMessage> {
+        match message {
+            LeaderMessage::LeaderElectionRequest {
+                request_id,
+                timestamp: _,
+            } => {
+                //TODO: usar timestamp
+                if request_id > self.id {
+                    return Some(LeaderMessage::TodoMessage {
+                        msg: "Yo no puedo ser lider".to_owned(),
+                    });
+                }
+                /*let leader = self.connected_peers.get(&(self.leader)).unwrap();
+                let response = leader.write_message(ClientMessage::StillAlive {});
+                if response.is_ok() {
+                    return Some(ClientMessage::TodoMessage {
+                        msg: format!("el lider sigue siendo: {}", self.leader),
+                    });
+                }
+                //thread::spawn(move || Client::send_leader_request(self, self.id));
+                */
+                Some(LeaderMessage::TodoMessage {
+                    msg: "Bully OK".to_owned(),
+                })
+            }
+            LeaderMessage::OkMessage {} => None,
 
+            LeaderMessage::CoordinatorMessage { connection_id: id } => {
+                self.update_coordinator(id);
+                if self.leader != self.id {
+                    println!("New leader: {}", id);
+                }
+                Some(LeaderMessage::TodoMessage {
+                    msg: format!("CoordinatorUpdate {}", id),
+                })
+            }
+            // LeaderMessage::LeaderElectionRequest {
+            //     request_id,
+            //     timestamp,
+            // } => todo!(),
+            // LeaderMessage::OkMessage => todo!(),
+            // LeaderMessage::CoordinatorMessage { connection_id } => {
+            //     todo!()
+            // }
+            LeaderMessage::StillAlive {} => todo!(),
+            LeaderMessage::TodoMessage { .. } => todo!(),
+        }
+    }
     fn process_message(&mut self, message: ClientMessage, peer_id: u32) -> Option<ClientMessage> {
         println!("PROCESS: {:?}", message.serialize());
         match message {
@@ -188,7 +226,7 @@ impl Client {
                 Some(ClientMessage::TodoMessage { msg: format!("wb") })
             }
 
-            ClientMessage::LockRequest { read_only } => {
+            ClientMessage::LockRequest { read_only: _ } => {
                 // si me llega esto deberia ser lider
                 // soy lider?
                 if self.lock.acquire(peer_id) == LockResult::Acquired {
@@ -200,41 +238,6 @@ impl Client {
                         msg: format!("lock failed"),
                     })
                 }
-            }
-
-            ClientMessage::LeaderElectionRequest {
-                request_id,
-                timestamp: _,
-            } => {
-                //TODO: usar timestamp
-                if request_id > self.id {
-                    return Some(ClientMessage::TodoMessage {
-                        msg: "Yo no puedo ser lider".to_owned(),
-                    });
-                }
-                /*let leader = self.connected_peers.get(&(self.leader)).unwrap();
-                let response = leader.write_message(ClientMessage::StillAlive {});
-                if response.is_ok() {
-                    return Some(ClientMessage::TodoMessage {
-                        msg: format!("el lider sigue siendo: {}", self.leader),
-                    });
-                }
-                //thread::spawn(move || Client::send_leader_request(self, self.id));
-                */
-                Some(ClientMessage::TodoMessage {
-                    msg: "Bully OK".to_owned(),
-                })
-            }
-            ClientMessage::OkMessage {} => None,
-
-            ClientMessage::CoordinatorMessage { connection_id: id } => {
-                self.update_coordinator(id);
-                if self.leader != self.id {
-                    println!("New leader: {}", id);
-                }
-                Some(ClientMessage::TodoMessage {
-                    msg: format!("CoordinatorUpdate {}", id),
-                })
             }
             ClientMessage::StillAlive {} => None,
             ClientMessage::TodoMessage { msg: _msg } => None,
@@ -264,7 +267,7 @@ impl Client {
             Err(_err) => Err(io::Error::new(io::ErrorKind::Other, "Pool not available")),
         }
     }
-    fn leader_processor(channel: Sender<ClientEvent>) {}
+    fn leader_processor(_channel: Sender<ClientEvent>) {}
     fn send_result(&mut self, _id: u32, _result: u32) {}
     fn send_modifications(&mut self, _id: u32, _result: u32) {}
 
@@ -281,7 +284,7 @@ impl Client {
         }*/
     }
 
-    fn send_leader_request(&mut self, id: u32) {
+    fn send_leader_request(&mut self, _id: u32) {
         println!("MANDE LIDER");
         /*let mut higher_alive = false;
         for (peer_pid, peer) in self.connected_peers.iter() {
@@ -307,7 +310,7 @@ impl Client {
         */
     }
 
-    fn send_request_to_leader(&self, message: ClientMessage) -> io::Result<()> {
+    fn send_request_to_leader(&self, _message: ClientMessage) -> io::Result<()> {
         /*if let Some(leader_peer) = self.connected_peers.get(&self.leader) {
             leader_peer.write_message(message)
         } else {
