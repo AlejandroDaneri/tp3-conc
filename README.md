@@ -6,7 +6,7 @@
 La respuesta de process_message son encoladas al hilo de los peers
 - [X] Extraer de ClientMessages los mensajes de lider, para poder trabajarlos de forma especial
 - [X] Crear un hilo para los mensajes de lider.
-- [ ] Mutar el lider que apunta el cliente en el thread de lider?.
+- [ ] Terminar de implementar Bully
 - [ ] Crear una condvar para trabar el hilo de procesar mensajes. y que el hilo de leaderMessages lo destrabe cuando se elije un lider.
 
 # Blockchain
