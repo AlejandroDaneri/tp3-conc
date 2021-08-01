@@ -20,12 +20,12 @@ impl PeerHandler {
         request_receiver: Receiver<ClientEvent>,
     ) -> Self {
         let thread_handle = Some(thread::spawn(move || {
-            PeerHandler::handle_messages(own_id, response_sender, request_receiver).unwrap();
+            PeerHandler::run(own_id, response_sender, request_receiver).unwrap();
         }));
         PeerHandler { thread_handle }
     }
 
-    fn handle_messages(
+    fn run(
         own_id: PeerIdType,
         sender: Sender<ClientEvent>,
         receiver: Receiver<ClientEvent>,
@@ -52,7 +52,7 @@ impl PeerHandler {
                         }
                     }
                 }
-                _ => {}
+                _ => unreachable!(),
             }
         }
         Ok(())
