@@ -266,7 +266,7 @@ mod tests {
         let mut bc = Blockchain::new();
         let block = Block::new(transaction, 0).unwrap();
         bc.add_block(block.clone());
-        let last_block = bc.get_last();
+        let last_block = bc.get_last().unwrap();
         assert_eq!(*last_block, block);
     }
 }

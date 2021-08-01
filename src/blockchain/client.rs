@@ -2,7 +2,7 @@ use std::io;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 use crate::blockchain::blockchain::Blockchain;
-use crate::blockchain::client_event::{ClientEvent, ClientEventReader, ClientMessage};
+use crate::blockchain::client_event::{ClientEvent, ClientMessage};
 use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
 use crate::blockchain::peer::PeerIdType;
 use crate::handler::connection_handler::ConnectionHandler;
@@ -118,7 +118,7 @@ impl Client {
                 Some(ClientMessage::TodoMessage { msg: format!("wb") })
             }
 
-            ClientMessage::LockRequest { read_only } => {
+            ClientMessage::LockRequest { read_only: _ } => {
                 // si me llega esto deberia ser lider
                 // soy lider?
                 if self.lock.acquire(peer_id) == LockResult::Acquired {
@@ -187,7 +187,7 @@ impl Client {
         }*/
     }
 
-    fn send_leader_request(&mut self, id: u32) {
+    fn send_leader_request(&mut self, _id: u32) {
         println!("MANDE LIDER");
         /*let mut higher_alive = false;
         for (peer_pid, peer) in self.connected_peers.iter() {
@@ -213,7 +213,7 @@ impl Client {
         */
     }
 
-    fn send_request_to_leader(&self, message: ClientMessage) -> io::Result<()> {
+    fn send_request_to_leader(&self, _message: ClientMessage) -> io::Result<()> {
         /*if let Some(leader_peer) = self.connected_peers.get(&self.leader) {
             leader_peer.write_message(message)
         } else {
