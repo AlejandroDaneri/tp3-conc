@@ -60,7 +60,7 @@ impl PeerHandler {
 
     fn exchange_pids(own_id: PeerIdType, stream: &mut TcpStream) -> io::Result<u32> {
         let pid_msg = format!("{}\n", own_id);
-        stream.write(pid_msg.as_bytes())?;
+        stream.write_all(pid_msg.as_bytes())?;
         let mut buf_reader = BufReader::new(stream);
         let mut client_pid = String::new();
         buf_reader.read_line(&mut client_pid)?;

@@ -56,7 +56,7 @@ impl Peer {
     ) -> Result<(), Box<dyn std::error::Error>> {
         for event in receiver {
             let buf = event.serialize();
-            stream.write(buf.as_bytes())?;
+            stream.write_all(buf.as_bytes())?;
         }
         Ok(())
     }
