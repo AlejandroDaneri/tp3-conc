@@ -5,6 +5,8 @@ use std::time::SystemTime;
 use crate::blockchain::blockchain::{Blockchain, Transaction};
 use crate::blockchain::peer::PeerIdType;
 
+use super::blockchain::Block;
+
 #[derive(Debug)]
 pub enum ClientEvent {
     Connection {
@@ -54,7 +56,7 @@ impl ClientMessage {
         match self {
             ClientMessage::ReadBlockchainRequest {} => "rb".to_owned(),
             ClientMessage::ReadBlockchainResponse { blockchain } => {
-                format!("blockhain {}", blockchain.serialize())
+                format!("blockchain {}", blockchain.serialize())
             }
             ClientMessage::WriteBlockchainRequest { transaction } => {
                 format!("wb {}", transaction.serialize())
@@ -93,7 +95,8 @@ impl ClientMessage {
             Some("wb") => ClientMessage::parse_write_blockchain(&mut tokens),
             Some("le") => ClientMessage::parse_leader_req(&mut tokens),
             Some("lock") => ClientMessage::parse_lock_req(&mut tokens),
-            Some("coordinator") => ClientMessage::parse_coord(&mut tokens),
+            Some("coordinator") => Some(ClientMessage::parse_coord(&mut tokens)),
+            Some("blockchain") => Some(ClientMessage::parse_blockchain(&mut tokens)),
             _ => None,
         }
     }
@@ -114,18 +117,24 @@ impl ClientMessage {
 
     fn parse_lock_req(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
         let read_only_str = tokens.next()?;
-        let request_id_str = tokens.next()?; //pasar a timestamp
+        let request_id_str = tokens.next()?;
         Some(ClientMessage::LockRequest {
             read_only: read_only_str.parse::<bool>().ok()?,
             request_id: request_id_str.parse::<u32>().ok()?,
         })
     }
 
-    fn parse_coord(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
+    fn parse_coord(tokens: &mut dyn Iterator<Item = &str>) -> ClientMessage {
         let new_leader_id = tokens.next().unwrap();
-        Some(ClientMessage::CoordinatorMessage {
+        ClientMessage::CoordinatorMessage {
             connection_id: new_leader_id.parse::<u32>().unwrap(),
-        })
+        }
+    }
+
+    fn parse_blockchain(tokens: &mut dyn Iterator<Item = &str>) -> ClientMessage {
+        ClientMessage::ReadBlockchainResponse {
+            blockchain: Blockchain::parse(tokens),
+        }
     }
 }
 

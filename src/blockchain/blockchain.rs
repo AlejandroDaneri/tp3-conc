@@ -109,10 +109,9 @@ impl Block {
 
     pub fn serialize(&self) -> String {
         format!(
-            "{} {} {}",
+            "{} {}",
             self.transaction.serialize(),
             format!("{}", self.previous_hash),
-            format!("{}", self.hash),
         )
     }
 }
@@ -174,7 +173,22 @@ impl Blockchain {
                 response = format!("{} {}", response, block.serialize())
             }
         }
-        response
+        format!("{} end_blockchain", response)
+    }
+
+    pub fn parse(tokens: &mut dyn Iterator<Item = &str>) -> Self {
+        let mut blockchain = Blockchain::new();
+        while let Some(token) = tokens.next() {
+            if token != "end_blockchain" {
+                let transaction = Transaction::parse(tokens).unwrap();
+                let previous_hash = tokens.next().unwrap();
+                let block = Block::new(transaction, previous_hash.parse::<u64>().unwrap()).unwrap();
+                blockchain.add_block(block);
+                continue;
+            }
+            break;
+        }
+        blockchain
     }
 }
 
