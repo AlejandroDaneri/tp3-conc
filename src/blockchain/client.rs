@@ -1,9 +1,7 @@
 use std::io;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
-
 use crate::blockchain::client_event::{ClientEvent, ClientMessage};
-
 use crate::blockchain::peer::PeerIdType;
 use crate::handler::connection_handler::ConnectionHandler;
 use crate::handler::input_handler::InputHandler;
@@ -45,7 +43,7 @@ impl Client {
             peer_handler_sender,
             leader_sender,
             message_handler_sender,
-        );
+        )?;
 
         drop(connection_handler);
         drop(peer_handler);
@@ -67,18 +65,22 @@ impl Client {
         while let Ok(event) = event_receiver.recv() {
             match event {
                 ClientEvent::Connection { .. } | ClientEvent::PeerDisconnected { .. } => {
-                    peer_sender.send(event);
+                    peer_sender.send(event)
+                        .map_err(|_| io::Error::new(io::ErrorKind::Other, "peer sender error"))?;
                 }
                 ClientEvent::PeerMessage { message, peer_id } => {
-                    message_sender.send((message, peer_id));
+                    message_sender.send((message, peer_id))
+                        .map_err(|_| io::Error::new(io::ErrorKind::Other, "message sender error"))?;
                 }
                 ClientEvent::UserInput { message } => {
                     // TODO ¿Poner un process_input más especializado? ¿Usar otro enum de mensajes?
-                    message_sender.send((message, 0));
+                    message_sender.send((message, 0))
+                        .map_err(|_| io::Error::new(io::ErrorKind::Other, "message sender error"))?;
                 }
                 ClientEvent::LeaderEvent { message } => {
                     //parar todo llego un mensaje lider
-                    leader_sender.send(message);
+                    leader_sender.send(message)
+                        .map_err(|_| io::Error::new(io::ErrorKind::Other, "leader sender error"))?;
                 }
             }
         }

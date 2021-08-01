@@ -40,7 +40,9 @@ impl MessageHandler {
                 peer_sender.send(ClientEvent::PeerMessage {
                     peer_id,
                     message: response,
-                });
+                }).map_err(|_| {
+                    io::Error::new(io::ErrorKind::Other, "[Process message] Error while sending message to peer")
+                })?;
             }
         }
         println!("Saliendo del hilo de mensajes");
