@@ -20,32 +20,19 @@ pub enum ClientEvent {
     UserInput {
         message: ClientMessage,
     },
+    LeaderEvent {
+        message: LeaderMessage,
+    },
 }
 
 #[derive(Clone, Debug)]
 pub enum ClientMessage {
     ReadBlockchainRequest {},
-    ReadBlockchainResponse {
-        blockchain: Blockchain,
-    },
-    WriteBlockchainRequest {
-        transaction: Transaction,
-    },
-    LeaderElectionRequest {
-        request_id: u32,
-        timestamp: SystemTime,
-    },
-    LockRequest {
-        read_only: bool,
-    },
-    OkMessage,
-    CoordinatorMessage {
-        connection_id: u32,
-    },
+    ReadBlockchainResponse { blockchain: Blockchain },
+    WriteBlockchainRequest { transaction: Transaction },
+    LockRequest { read_only: bool },
     StillAlive {},
-    TodoMessage {
-        msg: String,
-    },
+    TodoMessage { msg: String },
 }
 
 impl ClientMessage {
@@ -58,23 +45,12 @@ impl ClientMessage {
             ClientMessage::WriteBlockchainRequest { transaction } => {
                 format!("wb {}", transaction.serialize())
             }
-            ClientMessage::LeaderElectionRequest {
-                request_id,
-                timestamp,
-            } => {
-                let time_epoch = timestamp.duration_since(std::time::UNIX_EPOCH).unwrap();
-                format!("le {} {}", request_id, time_epoch.as_secs())
-            }
             ClientMessage::LockRequest { read_only } => {
                 if *read_only {
                     "lock read".to_owned()
                 } else {
                     "lock write".to_owned()
                 }
-            }
-            ClientMessage::OkMessage {} => format!("ok"),
-            ClientMessage::CoordinatorMessage { connection_id } => {
-                format!("coordinator {}", connection_id)
             }
             ClientMessage::StillAlive {} => format!("alive"),
             ClientMessage::TodoMessage { msg } => format!("TODO! {}", msg),
@@ -87,9 +63,7 @@ impl ClientMessage {
         match action {
             Some("rb") => Some(ClientMessage::ReadBlockchainRequest {}),
             Some("wb") => ClientMessage::parse_write_blockchain(&mut tokens),
-            Some("le") => ClientMessage::parse_leader_req(&mut tokens),
             Some("lock") => ClientMessage::parse_lock_req(&mut tokens),
-            Some("coordinator") => Some(ClientMessage::parse_coord(&mut tokens)),
             Some("blockchain") => Some(ClientMessage::parse_blockchain(&mut tokens)),
             _ => None,
         }
@@ -100,27 +74,11 @@ impl ClientMessage {
         Some(ClientMessage::WriteBlockchainRequest { transaction })
     }
 
-    fn parse_leader_req(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
-        let request_id_str = tokens.next()?;
-        let _timestamp_str = tokens.next()?; //pasar a timestamp
-        Some(ClientMessage::LeaderElectionRequest {
-            request_id: request_id_str.parse::<u32>().ok()?,
-            timestamp: SystemTime::now(),
-        })
-    }
-
     fn parse_lock_req(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
         let read_only_str = tokens.next()?;
         Some(ClientMessage::LockRequest {
             read_only: read_only_str.parse::<bool>().ok()?,
         })
-    }
-
-    fn parse_coord(tokens: &mut dyn Iterator<Item = &str>) -> ClientMessage {
-        let new_leader_id = tokens.next().unwrap();
-        ClientMessage::CoordinatorMessage {
-            connection_id: new_leader_id.parse::<u32>().unwrap(),
-        }
     }
 
     fn parse_blockchain(tokens: &mut dyn Iterator<Item = &str>) -> ClientMessage {
@@ -147,5 +105,67 @@ impl<R: Read> Iterator for ClientEventReader<R> {
         let mut line = String::new();
         self.reader.read_line(&mut line).ok()?;
         ClientMessage::deserialize(line)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum LeaderMessage {
+    LeaderElectionRequest {
+        request_id: u32,
+        timestamp: SystemTime,
+    },
+    OkMessage,
+    CoordinatorMessage {
+        connection_id: u32,
+    },
+    StillAlive {},
+    TodoMessage {
+        msg: String,
+    },
+}
+impl LeaderMessage {
+    pub fn serialize(&self) -> String {
+        match self {
+            LeaderMessage::LeaderElectionRequest {
+                request_id,
+                timestamp,
+            } => {
+                let time_epoch = timestamp.duration_since(std::time::UNIX_EPOCH).unwrap();
+                format!("le {} {}", request_id, time_epoch.as_secs())
+            }
+
+            LeaderMessage::OkMessage {} => format!("ok"),
+            LeaderMessage::CoordinatorMessage { connection_id } => {
+                format!("coordinator {}", connection_id)
+            }
+            LeaderMessage::StillAlive {} => format!("alive"),
+            LeaderMessage::TodoMessage { msg: _ } => todo!(),
+        }
+    }
+
+    pub fn deserialize(line: String) -> Option<LeaderMessage> {
+        let mut tokens = line.split_whitespace();
+        let action = tokens.next();
+        match action {
+            Some("le") => LeaderMessage::parse_leader_req(&mut tokens),
+            Some("coordinator") => Some(LeaderMessage::parse_coord(&mut tokens)),
+            _ => None,
+        }
+    }
+
+    fn parse_leader_req(tokens: &mut dyn Iterator<Item = &str>) -> Option<LeaderMessage> {
+        let request_id_str = tokens.next()?;
+        let _timestamp_str = tokens.next()?; //pasar a timestamp
+        Some(LeaderMessage::LeaderElectionRequest {
+            request_id: request_id_str.parse::<u32>().ok()?,
+            timestamp: SystemTime::now(),
+        })
+    }
+
+    fn parse_coord(tokens: &mut dyn Iterator<Item = &str>) -> LeaderMessage {
+        let new_leader_id = tokens.next().unwrap();
+        LeaderMessage::CoordinatorMessage {
+            connection_id: new_leader_id.parse::<u32>().unwrap(),
+        }
     }
 }

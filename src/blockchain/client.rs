@@ -1,5 +1,6 @@
 use std::io;
 use std::sync::mpsc::{channel, Receiver, Sender};
+use std::thread;
 
 use crate::blockchain::blockchain::Blockchain;
 use crate::blockchain::client_event::{ClientEvent, ClientMessage};
@@ -9,6 +10,8 @@ use crate::handler::connection_handler::ConnectionHandler;
 use crate::handler::input_handler::InputHandler;
 use crate::handler::message_handler::MessageHandler;
 use crate::handler::peer_handler::PeerHandler;
+
+use super::client_event::LeaderMessage;
 
 #[derive(Debug)]
 pub struct Client {
@@ -28,12 +31,20 @@ impl Client {
 
         let (peer_handler_sender, peer_handler_receiver) = channel();
         let peer_handler = PeerHandler::new(self.id, sender.clone(), peer_handler_receiver);
+        let (leader_sender, leader_receiver) = channel();
+
+        thread::spawn(move || Client::leader_processor(leader_receiver));
 
         let (message_handler_sender, message_handler_receiver) = channel();
         let message_handler =
             MessageHandler::new(message_handler_receiver, peer_handler_sender.clone());
 
-        self.dispatch_messages(receiver, peer_handler_sender, message_handler_sender);
+        self.dispatch_messages(
+            receiver,
+            peer_handler_sender,
+            leader_sender,
+            message_handler_sender,
+        );
 
         drop(connection_handler);
         drop(peer_handler);
@@ -46,6 +57,7 @@ impl Client {
         &mut self,
         event_receiver: Receiver<ClientEvent>,
         peer_sender: Sender<ClientEvent>,
+        leader_sender: Sender<LeaderMessage>,
         message_sender: Sender<(ClientMessage, PeerIdType)>,
     ) -> io::Result<()> {
         //proceso mensajes que me llegan
@@ -61,11 +73,46 @@ impl Client {
                     // TODO ¿Poner un process_input más especializado? ¿Usar otro enum de mensajes?
                     message_sender.send((message, 0));
                 }
+                ClientEvent::LeaderEvent { message } => {
+                    //parar todo llego un mensaje lider
+                    leader_sender.send(message);
+                }
             }
         }
         Ok(())
     }
-
+    fn process_leader_message(/*&mut self,*/ message: LeaderMessage) -> Option<LeaderMessage> {
+        match message {
+            LeaderMessage::LeaderElectionRequest {
+                request_id: _,
+                timestamp: _,
+            } => {
+                /*
+                //TODO: usar timestamp
+                if request_id > self.id {
+                    return Some(LeaderMessage::TodoMessage {
+                        msg: "Yo no puedo ser lider".to_owned(),
+                    });
+                }
+                let leader = self.connected_peers.get(&(self.leader)).unwrap();
+                let response = leader.write_message(ClientMessage::StillAlive {});
+                if response.is_ok() {
+                    return Some(ClientMessage::TodoMessage {
+                        msg: format!("el lider sigue siendo: {}", self.leader),
+                    });
+                }
+                //thread::spawn(move || Client::send_leader_request(self, self.id));
+                */
+                Some(LeaderMessage::TodoMessage {
+                    msg: "Bully OK".to_owned(),
+                })
+            }
+            LeaderMessage::OkMessage {} => None,
+            LeaderMessage::CoordinatorMessage { connection_id } => todo!(),
+            LeaderMessage::StillAlive {} => todo!(),
+            LeaderMessage::TodoMessage { msg } => todo!(),
+        }
+    }
     fn send_result(&mut self, _id: u32, _result: u32) {}
     fn send_modifications(&mut self, _id: u32, _result: u32) {}
 
@@ -80,6 +127,11 @@ impl Client {
                 connection_id: self.id,
             });
         }*/
+    }
+    fn leader_processor(receiver: Receiver<LeaderMessage>) {
+        while let Ok(message) = receiver.recv() {
+            Client::process_leader_message(message);
+        }
     }
 
     fn send_leader_request(&mut self, _id: u32) {

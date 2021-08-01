@@ -109,40 +109,40 @@ impl MessageProcessor {
                 }
             }
 
-            ClientMessage::LeaderElectionRequest {
-                request_id,
-                timestamp: _,
-            } => {
-                //TODO: usar timestamp
-                if request_id > self.id {
-                    return Some(ClientMessage::TodoMessage {
-                        msg: "Yo no puedo ser lider".to_owned(),
-                    });
-                }
-                /*let leader = self.connected_peers.get(&(self.leader)).unwrap();
-                let response = leader.write_message(ClientMessage::StillAlive {});
-                if response.is_ok() {
-                    return Some(ClientMessage::TodoMessage {
-                        msg: format!("el lider sigue siendo: {}", self.leader),
-                    });
-                }
-                //thread::spawn(move || Client::send_leader_request(self, self.id));
-                */
-                Some(ClientMessage::TodoMessage {
-                    msg: "Bully OK".to_owned(),
-                })
-            }
-            ClientMessage::OkMessage {} => None,
+            // ClientMessage::LeaderElectionRequest {
+            //     request_id,
+            //     timestamp: _,
+            // } => {
+            //     //TODO: usar timestamp
+            //     if request_id > self.id {
+            //         return Some(ClientMessage::TodoMessage {
+            //             msg: "Yo no puedo ser lider".to_owned(),
+            //         });
+            //     }
+            //     /*let leader = self.connected_peers.get(&(self.leader)).unwrap();
+            //     let response = leader.write_message(ClientMessage::StillAlive {});
+            //     if response.is_ok() {
+            //         return Some(ClientMessage::TodoMessage {
+            //             msg: format!("el lider sigue siendo: {}", self.leader),
+            //         });
+            //     }
+            //     //thread::spawn(move || Client::send_leader_request(self, self.id));
+            //     */
+            //     Some(ClientMessage::TodoMessage {
+            //         msg: "Bully OK".to_owned(),
+            //     })
+            // }
+            // ClientMessage::OkMessage {} => None,
 
-            ClientMessage::CoordinatorMessage { connection_id: id } => {
-                //self.update_coordinator(id);
-                if self.leader != self.id {
-                    println!("New leader: {}", id);
-                }
-                Some(ClientMessage::TodoMessage {
-                    msg: format!("CoordinatorUpdate {}", id),
-                })
-            }
+            // ClientMessage::CoordinatorMessage { connection_id: id } => {
+            //     //self.update_coordinator(id);
+            //     if self.leader != self.id {
+            //         println!("New leader: {}", id);
+            //     }
+            //     Some(ClientMessage::TodoMessage {
+            //         msg: format!("CoordinatorUpdate {}", id),
+            //     })
+            // }
             ClientMessage::StillAlive {} => None,
             ClientMessage::TodoMessage { msg: _msg } => None,
         }
