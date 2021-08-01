@@ -51,6 +51,9 @@ impl Client {
 
         let (peer_handler_sender, peer_handler_receiver) = channel();
         let peer_handler = PeerHandler::new(self.id, sender.clone(), peer_handler_receiver);
+        let (leader_sender, leader_receiver) = channel();
+
+        thread::spawn(move || Client::leader_processor(leader_receiver));
 
         self.dispatch_messages(receiver, peer_handler_sender, leader_sender);
 
@@ -207,6 +210,11 @@ impl Client {
                 connection_id: self.id,
             });
         }*/
+    }
+    fn leader_processor(receiver: Receiver<LeaderMessage>) {
+        while let Ok(message) = receiver.recv() {
+            Client::process_leader_message(message);
+        }
     }
 
     fn send_leader_request(&mut self, _id: u32) {
