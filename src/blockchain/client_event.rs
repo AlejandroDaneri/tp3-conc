@@ -5,8 +5,6 @@ use std::time::SystemTime;
 use crate::blockchain::blockchain::{Blockchain, Transaction};
 use crate::blockchain::peer::PeerIdType;
 
-use super::blockchain::Block;
-
 #[derive(Debug)]
 pub enum ClientEvent {
     Connection {
@@ -67,9 +65,7 @@ impl ClientMessage {
                 let time_epoch = timestamp.duration_since(std::time::UNIX_EPOCH).unwrap();
                 format!("le {} {}", request_id, time_epoch.as_secs())
             }
-            ClientMessage::LockRequest {
-                read_only,
-            } => {
+            ClientMessage::LockRequest { read_only } => {
                 if *read_only {
                     "lock read".to_owned()
                 } else {
@@ -116,7 +112,7 @@ impl ClientMessage {
     fn parse_lock_req(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
         let read_only_str = tokens.next()?;
         Some(ClientMessage::LockRequest {
-            read_only: read_only_str.parse::<bool>().ok()?
+            read_only: read_only_str.parse::<bool>().ok()?,
         })
     }
 
