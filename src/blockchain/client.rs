@@ -32,7 +32,6 @@ impl Client {
         let (leader_sender, leader_receiver) = channel();
 
         let leader_handler = LeaderHandler::new(leader_receiver);
-        // thread::spawn(move || Client::leader_processor(leader_receiver));
 
         let (message_handler_sender, message_handler_receiver) = channel();
         let message_handler =
@@ -61,25 +60,28 @@ impl Client {
         leader_sender: Sender<LeaderMessage>,
         message_sender: Sender<(ClientMessage, PeerIdType)>,
     ) -> io::Result<()> {
-        //proceso mensajes que me llegan
         while let Ok(event) = event_receiver.recv() {
             match event {
                 ClientEvent::Connection { .. } | ClientEvent::PeerDisconnected { .. } => {
-                    peer_sender.send(event)
+                    peer_sender
+                        .send(event)
                         .map_err(|_| io::Error::new(io::ErrorKind::Other, "peer sender error"))?;
                 }
                 ClientEvent::PeerMessage { message, peer_id } => {
-                    message_sender.send((message, peer_id))
-                        .map_err(|_| io::Error::new(io::ErrorKind::Other, "message sender error"))?;
+                    message_sender.send((message, peer_id)).map_err(|_| {
+                        io::Error::new(io::ErrorKind::Other, "message sender error")
+                    })?;
                 }
                 ClientEvent::UserInput { message } => {
                     // TODO ¿Poner un process_input más especializado? ¿Usar otro enum de mensajes?
-                    message_sender.send((message, 0))
-                        .map_err(|_| io::Error::new(io::ErrorKind::Other, "message sender error"))?;
+                    message_sender.send((message, 0)).map_err(|_| {
+                        io::Error::new(io::ErrorKind::Other, "message sender error")
+                    })?;
                 }
                 ClientEvent::LeaderEvent { message } => {
                     //parar todo llego un mensaje lider
-                    leader_sender.send(message)
+                    leader_sender
+                        .send(message)
                         .map_err(|_| io::Error::new(io::ErrorKind::Other, "leader sender error"))?;
                 }
             }

@@ -37,10 +37,8 @@ impl LeaderProcessor {
     pub fn new() -> Self {
         LeaderProcessor {}
     }
-    fn send_result(&mut self, _id: u32, _result: u32) {}
-    fn send_modifications(&mut self, _id: u32, _result: u32) {}
 
-    fn notify_minions(&self, _id: u32) {
+    fn notify_all(&self, _id: u32) {
         println!("----notify----");
         /*
         Crear un evento que pueda ser enviado al peer_handler
@@ -124,31 +122,6 @@ impl LeaderProcessor {
         }*/
         unimplemented!()
     }
-
-    fn get_leader_id(&mut self, _id: u32, _result: u32) -> u32 {
-        0
-    }
-    // pub fn process_message(
-    //     &mut self,
-    //     message: LeaderMessage,
-    //     peer_id: u32,
-    // ) -> Option<LeaderMessage> {
-    //     println!("PROCESS: {:?}", message.serialize());
-    //     match message {
-    //         LeaderMessage::LeaderElectionRequest {
-    //             request_id,
-    //             timestamp,
-    //         } => todo!(),
-    //         LeaderMessage::OkMessage => todo!(),
-    //         LeaderMessage::CoordinatorMessage { connection_id } => todo!(),
-    //         LeaderMessage::StillAlive {} => todo!(),
-    //         LeaderMessage::TodoMessage { msg } => todo!(),
-    //     }
-    // }
-
-    // fn is_leader(&self) -> bool {
-    //     self.id == self.leader
-    // }
 }
 
 impl Drop for LeaderHandler {

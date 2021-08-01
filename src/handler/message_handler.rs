@@ -37,12 +37,17 @@ impl MessageHandler {
         let mut processor = MessageProcessor::new();
         for (message, peer_id) in message_receiver {
             if let Some(response) = processor.process_message(message, peer_id) {
-                peer_sender.send(ClientEvent::PeerMessage {
-                    peer_id,
-                    message: response,
-                }).map_err(|_| {
-                    io::Error::new(io::ErrorKind::Other, "[Process message] Error while sending message to peer")
-                })?;
+                peer_sender
+                    .send(ClientEvent::PeerMessage {
+                        peer_id,
+                        message: response,
+                    })
+                    .map_err(|_| {
+                        io::Error::new(
+                            io::ErrorKind::Other,
+                            "[Process message] Error while sending message to peer",
+                        )
+                    })?;
             }
         }
         println!("Saliendo del hilo de mensajes");
@@ -110,41 +115,6 @@ impl MessageProcessor {
                     })
                 }
             }
-
-            // ClientMessage::LeaderElectionRequest {
-            //     request_id,
-            //     timestamp: _,
-            // } => {
-            //     //TODO: usar timestamp
-            //     if request_id > self.id {
-            //         return Some(ClientMessage::TodoMessage {
-            //             msg: "Yo no puedo ser lider".to_owned(),
-            //         });
-            //     }
-            //     /*let leader = self.connected_peers.get(&(self.leader)).unwrap();
-            //     let response = leader.write_message(ClientMessage::StillAlive {});
-            //     if response.is_ok() {
-            //         return Some(ClientMessage::TodoMessage {
-            //             msg: format!("el lider sigue siendo: {}", self.leader),
-            //         });
-            //     }
-            //     //thread::spawn(move || Client::send_leader_request(self, self.id));
-            //     */
-            //     Some(ClientMessage::TodoMessage {
-            //         msg: "Bully OK".to_owned(),
-            //     })
-            // }
-            // ClientMessage::OkMessage {} => None,
-
-            // ClientMessage::CoordinatorMessage { connection_id: id } => {
-            //     //self.update_coordinator(id);
-            //     if self.leader != self.id {
-            //         println!("New leader: {}", id);
-            //     }
-            //     Some(ClientMessage::TodoMessage {
-            //         msg: format!("CoordinatorUpdate {}", id),
-            //     })
-            // }
             ClientMessage::StillAlive {} => None,
             ClientMessage::TodoMessage { msg: _msg } => None,
         }
