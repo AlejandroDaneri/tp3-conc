@@ -1,9 +1,6 @@
 use std::{io, sync::mpsc::Receiver, thread, time::SystemTime};
 
-use crate::blockchain::{
-    client_event::{ClientMessage, LeaderMessage},
-    peer::PeerIdType,
-};
+use crate::blockchain::{client_event::LeaderMessage, peer::PeerIdType};
 
 use super::peer_handler::PeerHandler;
 use std::sync::{Arc, Condvar, Mutex};
@@ -41,18 +38,8 @@ impl LeaderHandler {
         leader_election_notify: Arc<(Mutex<bool>, Condvar)>,
     ) -> io::Result<()> {
         let mut processor = LeaderProcessor::new(peer_handler);
-        // for (message, peer_id) in message_receiver {
-        /*if let Some(response) =*/
         processor.leader_processor(message_receiver, leader_election_notify)
-        // peer_sender.send(ClientEvent::LeaderMessage {
-        //     peer_id,
-        //     message: response,
-        // });
-
-        // Ok(())
     }
-    // println!("Saliendo del hilo de mensajes");
-    // Ok(())
 }
 
 impl LeaderProcessor {
@@ -112,17 +99,15 @@ impl LeaderProcessor {
             } => {
                 //TODO: usar timestamp
                 if request_id > self.peer_handler.own_id {
-                    return;
+                    return; //no puedo ser lider, descartado
                 }
-                let guard = thread::spawn(move || self.send_leader_request());
-
                 let asker = self
                     .peer_handler
                     .connected_peers
                     .get(&(&request_id))
                     .unwrap();
                 asker.write_message_leader(LeaderMessage::OkMessage {});
-                guard.join();
+                self.send_leader_request();
             }
             LeaderMessage::CurrentLeaderLocal { response_sender } => {
                 response_sender.send(self.current_leader).unwrap();
@@ -142,11 +127,13 @@ impl LeaderProcessor {
         let mut higher_alive = false;
         for (peer_pid, peer) in peer_handler.connected_peers.iter() {
             if peer_pid > &(peer_handler.own_id) {
-                println!("hay peer que pueden ser lider");
+                println!("hay peer que puede ser lider");
                 let response = peer.write_message_leader(LeaderMessage::LeaderElectionRequest {
                     request_id: peer_handler.own_id,
                     timestamp: SystemTime::now(),
                 });
+
+                // TODO: necesito que alguno me responda por algun canal para saber que no voy a ser lider
                 if response.is_ok() {
                     higher_alive = true
                 }
@@ -160,18 +147,6 @@ impl LeaderProcessor {
         self.current_leader = peer_handler.own_id;
         println!("SOY NUEVO LIDER");
         self.notify_all(peer_handler.own_id);
-    }
-
-    fn send_request_to_leader(&self, _message: ClientMessage) -> io::Result<()> {
-        /*if let Some(leader_peer) = self.connected_peers.get(&self.leader) {
-            leader_peer.write_message(message)
-        } else {
-            Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Request sent to none leader",
-            ))
-        }*/
-        unimplemented!()
     }
 }
 
