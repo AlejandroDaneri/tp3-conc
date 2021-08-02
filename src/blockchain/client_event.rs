@@ -123,9 +123,6 @@ pub enum LeaderMessage {
         connection_id: u32,
     },
     StillAlive {},
-    TodoMessage {
-        msg: String,
-    },
 }
 impl LeaderMessage {
     pub fn serialize(&self) -> String {
@@ -145,7 +142,6 @@ impl LeaderMessage {
                 format!("coordinator {}", connection_id)
             }
             LeaderMessage::StillAlive {} => "alive".to_owned(),
-            LeaderMessage::TodoMessage { msg: _ } => todo!(),
         }
     }
 
@@ -161,7 +157,7 @@ impl LeaderMessage {
 
     fn parse_leader_req(tokens: &mut dyn Iterator<Item = &str>) -> Option<LeaderMessage> {
         let request_id_str = tokens.next()?;
-        let _timestamp_str = tokens.next()?; //pasar a timestamp
+        let _timestamp_str = tokens.next()?; //TODO: pasar a timestamp si lo vamos a usar
         Some(LeaderMessage::LeaderElectionRequest {
             request_id: request_id_str.parse::<u32>().ok()?,
             timestamp: SystemTime::now(),

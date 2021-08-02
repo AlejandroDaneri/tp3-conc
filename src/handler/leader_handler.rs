@@ -70,6 +70,7 @@ impl LeaderProcessor {
                     let (mutex, cv) = &*leader_election_notify;
                     if let Ok(mut leader_busy) = mutex.lock() {
                         self.process_message(message);
+                        // TODO: esperar que llegue coordinador, procesar y ahi si desbloquear
                         *leader_busy = true;
                     }
                     cv.notify_all();
@@ -115,9 +116,8 @@ impl LeaderProcessor {
             LeaderMessage::CoordinatorMessage { connection_id } => {
                 self.current_leader = connection_id
             }
-            LeaderMessage::StillAlive {} => todo!(),
-            LeaderMessage::TodoMessage { msg: _ } => todo!(),
-            LeaderMessage::OkMessage => todo!(),
+            LeaderMessage::StillAlive {} => {}
+            LeaderMessage::OkMessage => {}
         }
     }
 
@@ -133,7 +133,7 @@ impl LeaderProcessor {
                     timestamp: SystemTime::now(),
                 });
 
-                // TODO: necesito que alguno me responda por algun canal para saber que no voy a ser lider
+                // TODO: necesito que alguno me responda por algun canal el OKMEssage para saber que no voy a ser lider
                 if response.is_ok() {
                     higher_alive = true
                 }
