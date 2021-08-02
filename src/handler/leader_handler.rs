@@ -20,8 +20,9 @@ const LEADER_ELECTION_TIMEOUT: Duration = Duration::from_secs(2);
 
 struct LeaderProcessor {
     peer_handler: PeerHandler,
-    actual_leader: PeerIdType,
+    current_leader: PeerIdType,
 }
+
 impl LeaderHandler {
     pub fn new(
         leader_receiver: Receiver<LeaderMessage>,
@@ -39,7 +40,7 @@ impl LeaderHandler {
         peer_handler: PeerHandler,
         leader_election_notify: Arc<(Mutex<bool>, Condvar)>,
     ) -> io::Result<()> {
-        let processor = LeaderProcessor::new(peer_handler);
+        let mut processor = LeaderProcessor::new(peer_handler);
         // for (message, peer_id) in message_receiver {
         /*if let Some(response) =*/
         processor.leader_processor(message_receiver, leader_election_notify)
@@ -58,7 +59,7 @@ impl LeaderProcessor {
     pub fn new(peer_handler: PeerHandler) -> Self {
         LeaderProcessor {
             peer_handler,
-            actual_leader: 0,
+            current_leader: 0,
         }
     }
 
@@ -105,7 +106,7 @@ impl LeaderProcessor {
     //     }
     // }
     pub fn leader_processor(
-        &self,
+        &mut self,
         receiver: Receiver<LeaderMessage>,
         leader_election_notify: Arc<(Mutex<bool>, Condvar)>,
     ) -> io::Result<()> {
@@ -113,16 +114,16 @@ impl LeaderProcessor {
             match receiver.recv_timeout(LEADER_ELECTION_TIMEOUT) {
                 Ok(message) => {
                     let (mutex, cv) = &*leader_election_notify;
-                    if let Ok(mut leader_ready) = mutex.lock() {
-                        *leader_ready = false;
+                    if let Ok(mut leader_busy) = mutex.lock() {
+                        self.process_message(message);
+                        *leader_busy = true;
                     }
                     cv.notify_all();
                 }
                 Err(RecvTimeoutError::Timeout) => {
-                    println!("Leader election finished!");
                     let (mutex, cv) = &*leader_election_notify;
-                    if let Ok(mut leader_ready) = mutex.lock() {
-                        *leader_ready = true;
+                    if let Ok(mut leader_busy) = mutex.lock() {
+                        *leader_busy = false;
                     }
                     cv.notify_all();
                 }
@@ -136,12 +137,13 @@ impl LeaderProcessor {
         Ok(())
     }
 
-    fn process_message(&self, message: LeaderMessage) -> io::Result<()> {
+    fn process_message(&mut self, message: LeaderMessage) -> io::Result<()> {
         match message {
             LeaderMessage::LeaderElectionRequest {
-                request_id: _,
+                request_id,
                 timestamp: _,
             } => {
+                self.current_leader = request_id;
                 /*
                 //TODO: usar timestamp
                 if request_id > self.id {
@@ -161,6 +163,9 @@ impl LeaderProcessor {
                 // Some(LeaderMessage::TodoMessage {
                 //     msg: "Bully OK".to_owned(),
                 // })
+            }
+            LeaderMessage::CurrentLeaderLocal { response_sender } => {
+                response_sender.send(self.current_leader).unwrap();
             }
             LeaderMessage::CoordinatorMessage { connection_id: _ } => todo!(),
             LeaderMessage::StillAlive {} => todo!(),

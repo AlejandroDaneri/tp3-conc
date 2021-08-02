@@ -4,6 +4,7 @@ use std::time::SystemTime;
 
 use crate::blockchain::blockchain::{Blockchain, Transaction};
 use crate::blockchain::peer::PeerIdType;
+use std::sync::mpsc::Sender;
 
 #[derive(Debug)]
 pub enum ClientEvent {
@@ -47,12 +48,12 @@ impl ClientMessage {
             }
             ClientMessage::LockRequest { read_only } => {
                 if *read_only {
-                    "lock read".to_owned()
+                    "lock true".to_owned()
                 } else {
-                    "lock write".to_owned()
+                    "lock false".to_owned()
                 }
             }
-            ClientMessage::StillAlive {} => "alive".to_string(),
+            ClientMessage::StillAlive {} => "alive".to_owned(),
             ClientMessage::TodoMessage { msg } => format!("TODO! {}", msg),
         }
     }
@@ -111,8 +112,11 @@ impl<R: Read> Iterator for ClientEventReader<R> {
 #[derive(Clone, Debug)]
 pub enum LeaderMessage {
     LeaderElectionRequest {
-        request_id: u32,
+        request_id: PeerIdType,
         timestamp: SystemTime,
+    },
+    CurrentLeaderLocal {
+        response_sender: Sender<PeerIdType>,
     },
     OkMessage,
     CoordinatorMessage {
@@ -133,12 +137,14 @@ impl LeaderMessage {
                 let time_epoch = timestamp.duration_since(std::time::UNIX_EPOCH).unwrap();
                 format!("le {} {}", request_id, time_epoch.as_secs())
             }
-
-            LeaderMessage::OkMessage {} => "ok".to_string(),
+            LeaderMessage::CurrentLeaderLocal { .. } => {
+                unreachable!()
+            }
+            LeaderMessage::OkMessage {} => "ok".to_owned(),
             LeaderMessage::CoordinatorMessage { connection_id } => {
                 format!("coordinator {}", connection_id)
             }
-            LeaderMessage::StillAlive {} => "alive".to_string(),
+            LeaderMessage::StillAlive {} => "alive".to_owned(),
             LeaderMessage::TodoMessage { msg: _ } => todo!(),
         }
     }

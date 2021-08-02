@@ -1,9 +1,9 @@
 use std::io;
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 
 use crate::blockchain::blockchain::Blockchain;
-use crate::blockchain::client_event::{ClientEvent, ClientMessage};
+use crate::blockchain::client_event::{ClientEvent, ClientMessage, LeaderMessage};
 use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
 use crate::blockchain::peer::PeerIdType;
 use std::thread;
@@ -13,38 +13,42 @@ pub struct MessageHandler {
     thread_handle: Option<thread::JoinHandle<()>>,
 }
 
-struct MessageProcessor {
-    id: PeerIdType,
-    leader: PeerIdType,
-    lock: CentralizedLock,
-    blockchain: Blockchain,
-}
-
 impl MessageHandler {
     pub fn new(
+        own_id: PeerIdType,
         message_receiver: Receiver<(ClientMessage, PeerIdType)>,
         peer_sender: Sender<ClientEvent>,
         leader_notify: Arc<(Mutex<bool>, Condvar)>,
+        leader_handler_sender: Sender<LeaderMessage>,
     ) -> Self {
         let thread_handle = Some(thread::spawn(move || {
-            MessageHandler::run(message_receiver, peer_sender, leader_notify).unwrap();
+            MessageHandler::run(
+                own_id,
+                message_receiver,
+                peer_sender,
+                leader_notify,
+                leader_handler_sender,
+            )
+            .unwrap();
         }));
         MessageHandler { thread_handle }
     }
 
     fn run(
+        own_id: PeerIdType,
         message_receiver: Receiver<(ClientMessage, PeerIdType)>,
         peer_sender: Sender<ClientEvent>,
         leader_notify: Arc<(Mutex<bool>, Condvar)>,
+        leader_handler_sender: Sender<LeaderMessage>,
     ) -> io::Result<()> {
-        let mut processor = MessageProcessor::new();
+        let mut processor = MessageProcessor::new(own_id, leader_handler_sender);
         for (message, peer_id) in message_receiver {
             let (mutex, cv) = &*leader_notify;
-            println!("Checking leader");
-            if let Ok(mut leader_lock) = mutex.lock() {
-                let _guard = cv.wait_while(leader_lock, |waiting| *waiting).unwrap();
+            if let Ok(leader_lock) = mutex.lock() {
+                let _guard = cv
+                    .wait_while(leader_lock, |leader_busy| *leader_busy)
+                    .unwrap();
             }
-            println!("Leader available");
             if let Some(response) = processor.process_message(message, peer_id) {
                 peer_sender
                     .send(ClientEvent::PeerMessage {
@@ -64,13 +68,20 @@ impl MessageHandler {
     }
 }
 
+struct MessageProcessor {
+    id: PeerIdType,
+    lock: CentralizedLock,
+    blockchain: Blockchain,
+    leader_handler_sender: Sender<LeaderMessage>,
+}
+
 impl MessageProcessor {
-    pub fn new() -> Self {
+    pub fn new(own_id: PeerIdType, leader_handler_sender: Sender<LeaderMessage>) -> Self {
         MessageProcessor {
-            id: 0,
-            leader: 0,
+            id: own_id,
             lock: CentralizedLock::new(),
             blockchain: Blockchain::new(),
+            leader_handler_sender,
         }
     }
 
@@ -109,20 +120,18 @@ impl MessageProcessor {
                     }
                 }
                 Some(ClientMessage::TodoMessage {
-                    msg: "wb".to_string(),
+                    msg: "wb".to_owned(),
                 })
             }
 
             ClientMessage::LockRequest { read_only: _ } => {
-                // si me llega esto deberia ser lider
-                // soy lider?
                 if self.lock.acquire(peer_id) == LockResult::Acquired {
                     Some(ClientMessage::TodoMessage {
-                        msg: "lock acquired".to_string(),
+                        msg: "lock acquired".to_owned(),
                     })
                 } else {
                     Some(ClientMessage::TodoMessage {
-                        msg: "lock failed".to_string(),
+                        msg: "lock failed".to_owned(),
                     })
                 }
             }
@@ -132,7 +141,14 @@ impl MessageProcessor {
     }
 
     fn is_leader(&self) -> bool {
-        self.id == self.leader
+        self.id == self.retrieve_leader()
+    }
+
+    fn retrieve_leader(&self) -> PeerIdType {
+        let (response_sender, response_receiver) = channel();
+        let message = LeaderMessage::CurrentLeaderLocal { response_sender };
+        self.leader_handler_sender.send(message).unwrap();
+        response_receiver.recv().unwrap()
     }
 }
 

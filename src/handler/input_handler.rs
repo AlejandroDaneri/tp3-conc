@@ -3,6 +3,7 @@ use std::sync::mpsc::Sender;
 use std::thread;
 
 use crate::blockchain::client_event::{ClientEvent, ClientEventReader};
+use std::io::Read;
 
 #[derive(Debug)]
 pub struct InputHandler {
@@ -10,15 +11,14 @@ pub struct InputHandler {
 }
 
 impl InputHandler {
-    pub fn new(input_sender: Sender<ClientEvent>) -> Self {
+    pub fn new<T: 'static + Read + Send>(source: T, input_sender: Sender<ClientEvent>) -> Self {
         let thread_handle = Some(thread::spawn(move || {
-            InputHandler::run(input_sender).unwrap();
+            InputHandler::run(source, input_sender).unwrap();
         }));
         InputHandler { thread_handle }
     }
 
-    fn run(input_sender: Sender<ClientEvent>) -> io::Result<()> {
-        let source = io::stdin();
+    fn run<T: Read>(source: T, input_sender: Sender<ClientEvent>) -> io::Result<()> {
         let message_reader = ClientEventReader::new(source);
         for message in message_reader {
             println!("Enviando evento {:?}", message);

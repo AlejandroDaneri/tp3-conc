@@ -1,4 +1,4 @@
-use crate::blockchain::client_event::ClientEvent;
+use crate::blockchain::client_event::{ClientEvent, LeaderMessage};
 use crate::blockchain::peer::{Peer, PeerIdType};
 use std::collections::HashMap;
 use std::io;
@@ -20,6 +20,7 @@ impl PeerHandler {
         own_id: PeerIdType,
         response_sender: Sender<ClientEvent>,
         request_receiver: Receiver<ClientEvent>,
+        leader_handler_sender: Sender<LeaderMessage>,
     ) -> Self {
         let mut ret = PeerHandler {
             thread_handle: None,
@@ -27,7 +28,21 @@ impl PeerHandler {
             own_id,
         };
         ret.thread_handle = Some(thread::spawn(move || {
-            ret.run(own_id, request_receiver, response_sender).unwrap();
+            ret.run(
+                own_id,
+                request_receiver,
+                response_sender,
+                leader_handler_sender,
+            )
+            .unwrap();
+            // let thread_handle = Some(thread::spawn(move || {
+            //     PeerHandler::run(
+            //         own_id,
+            //         request_receiver,
+            //         response_sender,
+            //         leader_handler_sender,
+            //     )
+            //     .unwrap();
         }));
         ret
     }
@@ -37,6 +52,7 @@ impl PeerHandler {
         own_id: PeerIdType,
         receiver: Receiver<ClientEvent>,
         sender: Sender<ClientEvent>,
+        leader_handler_sender: Sender<LeaderMessage>,
     ) -> io::Result<()> {
         for event in receiver {
             match event {
@@ -48,14 +64,16 @@ impl PeerHandler {
                 ClientEvent::PeerDisconnected { peer_id } => {
                     self.connected_peers.remove(&peer_id);
                     println!("Peer {} removed", peer_id);
-                    // TODO: leader election
+                    // TODO: leader election leader_handler_sender.send(LeaderMessage::PeerDisconnected...)
                 }
                 ClientEvent::PeerMessage { message, peer_id } => {
-                    if let Some(peer) = self.connected_peers.get(&peer_id) {
+                    println!("sending message to {}: {:?}", peer_id, message);
+                    // if let Some(peer) = self.connected_peers.get(&peer_id) {
+                    if let Some(peer) = connected_peers.get(&peer_id) {
                         let sent = peer.write_message(message);
                         if sent.is_err() {
                             println!("Peer {} disconnected!", peer_id);
-                            // TODO: leader election
+                            // TODO: leader election leader_handler_sender.send(LeaderMessage::PeerDisconnected...)
                         }
                     }
                 }
