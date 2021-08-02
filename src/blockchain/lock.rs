@@ -60,7 +60,6 @@ impl Lock for CentralizedLock {
 
     fn lock_expired(&self) -> bool {
         if let Ok(elapsed) = SystemTime::now().duration_since(self.lock_time) {
-            println!("Ok, elapsed? {}", elapsed.as_secs());
             elapsed.as_secs() > 5
         } else {
             true

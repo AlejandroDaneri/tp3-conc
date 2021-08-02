@@ -4,6 +4,7 @@ use std::time::SystemTime;
 
 use crate::blockchain::blockchain::{Blockchain, Transaction};
 use crate::blockchain::peer::PeerIdType;
+use std::sync::mpsc::Sender;
 
 #[derive(Debug)]
 pub enum ClientEvent {
@@ -111,8 +112,11 @@ impl<R: Read> Iterator for ClientEventReader<R> {
 #[derive(Clone, Debug)]
 pub enum LeaderMessage {
     LeaderElectionRequest {
-        request_id: u32,
+        request_id: PeerIdType,
         timestamp: SystemTime,
+    },
+    CurrentLeaderLocal {
+        response_sender: Sender<PeerIdType>,
     },
     OkMessage,
     CoordinatorMessage {
@@ -133,7 +137,9 @@ impl LeaderMessage {
                 let time_epoch = timestamp.duration_since(std::time::UNIX_EPOCH).unwrap();
                 format!("le {} {}", request_id, time_epoch.as_secs())
             }
-
+            LeaderMessage::CurrentLeaderLocal { .. } => {
+                unreachable!()
+            }
             LeaderMessage::OkMessage {} => "ok".to_owned(),
             LeaderMessage::CoordinatorMessage { connection_id } => {
                 format!("coordinator {}", connection_id)

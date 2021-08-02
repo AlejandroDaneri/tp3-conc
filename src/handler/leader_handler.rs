@@ -3,6 +3,7 @@ use std::time::Duration;
 use std::{io, sync::mpsc::Receiver, thread};
 
 use crate::blockchain::client_event::{ClientMessage, LeaderMessage};
+use crate::blockchain::peer::PeerIdType;
 use std::sync::mpsc::RecvTimeoutError;
 
 #[derive(Debug)]
@@ -12,7 +13,9 @@ pub struct LeaderHandler {
 
 const LEADER_ELECTION_TIMEOUT: Duration = Duration::from_secs(2);
 
-struct LeaderProcessor {}
+struct LeaderProcessor {
+    current_leader: PeerIdType,
+}
 
 impl LeaderHandler {
     pub fn new(
@@ -29,7 +32,7 @@ impl LeaderHandler {
         message_receiver: Receiver<LeaderMessage>,
         leader_election_notify: Arc<(Mutex<bool>, Condvar)>,
     ) -> io::Result<()> {
-        let processor = LeaderProcessor::new();
+        let mut processor = LeaderProcessor::new();
         // for (message, peer_id) in message_receiver {
         /*if let Some(response) =*/
         processor.leader_processor(message_receiver, leader_election_notify)
@@ -46,7 +49,7 @@ impl LeaderHandler {
 
 impl LeaderProcessor {
     pub fn new() -> Self {
-        LeaderProcessor {}
+        LeaderProcessor { current_leader: 0 }
     }
 
     fn notify_all(&self, _id: u32) {
@@ -62,7 +65,7 @@ impl LeaderProcessor {
         }*/
     }
     pub fn leader_processor(
-        &self,
+        &mut self,
         receiver: Receiver<LeaderMessage>,
         leader_election_notify: Arc<(Mutex<bool>, Condvar)>,
     ) -> io::Result<()> {
@@ -71,6 +74,7 @@ impl LeaderProcessor {
                 Ok(message) => {
                     let (mutex, cv) = &*leader_election_notify;
                     if let Ok(mut leader_busy) = mutex.lock() {
+                        self.process_message(message);
                         *leader_busy = true;
                     }
                     cv.notify_all();
@@ -92,12 +96,13 @@ impl LeaderProcessor {
         Ok(())
     }
 
-    fn process_message(&self, message: LeaderMessage) -> io::Result<()> {
+    fn process_message(&mut self, message: LeaderMessage) -> io::Result<()> {
         match message {
             LeaderMessage::LeaderElectionRequest {
-                request_id: _,
+                request_id,
                 timestamp: _,
             } => {
+                self.current_leader = request_id;
                 /*
                 //TODO: usar timestamp
                 if request_id > self.id {
@@ -117,6 +122,9 @@ impl LeaderProcessor {
                 // Some(LeaderMessage::TodoMessage {
                 //     msg: "Bully OK".to_owned(),
                 // })
+            }
+            LeaderMessage::CurrentLeaderLocal { response_sender } => {
+                response_sender.send(self.current_leader).unwrap();
             }
             LeaderMessage::CoordinatorMessage { connection_id: _ } => todo!(),
             LeaderMessage::StillAlive {} => todo!(),

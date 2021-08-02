@@ -1,4 +1,4 @@
-use crate::blockchain::client_event::ClientEvent;
+use crate::blockchain::client_event::{ClientEvent, LeaderMessage};
 use crate::blockchain::peer::{Peer, PeerIdType};
 use std::collections::HashMap;
 use std::io;
@@ -18,9 +18,16 @@ impl PeerHandler {
         own_id: PeerIdType,
         response_sender: Sender<ClientEvent>,
         request_receiver: Receiver<ClientEvent>,
+        leader_handler_sender: Sender<LeaderMessage>,
     ) -> Self {
         let thread_handle = Some(thread::spawn(move || {
-            PeerHandler::run(own_id, request_receiver, response_sender).unwrap();
+            PeerHandler::run(
+                own_id,
+                request_receiver,
+                response_sender,
+                leader_handler_sender,
+            )
+            .unwrap();
         }));
         PeerHandler { thread_handle }
     }
@@ -29,6 +36,7 @@ impl PeerHandler {
         own_id: PeerIdType,
         receiver: Receiver<ClientEvent>,
         sender: Sender<ClientEvent>,
+        leader_handler_sender: Sender<LeaderMessage>,
     ) -> io::Result<()> {
         let mut connected_peers = HashMap::new();
         for event in receiver {
@@ -41,7 +49,7 @@ impl PeerHandler {
                 ClientEvent::PeerDisconnected { peer_id } => {
                     connected_peers.remove(&peer_id);
                     println!("Peer {} removed", peer_id);
-                    // TODO: leader election
+                    // TODO: leader election leader_handler_sender.send(LeaderMessage::PeerDisconnected...)
                 }
                 ClientEvent::PeerMessage { message, peer_id } => {
                     println!("sending message to {}: {:?}", peer_id, message);
@@ -49,7 +57,7 @@ impl PeerHandler {
                         let sent = peer.write_message(message);
                         if sent.is_err() {
                             println!("Peer {} disconnected!", peer_id);
-                            // TODO: leader election
+                            // TODO: leader election leader_handler_sender.send(LeaderMessage::PeerDisconnected...)
                         }
                     }
                 }

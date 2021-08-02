@@ -1,9 +1,9 @@
 use std::io;
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 
 use crate::blockchain::blockchain::Blockchain;
-use crate::blockchain::client_event::{ClientEvent, ClientMessage};
+use crate::blockchain::client_event::{ClientEvent, ClientMessage, LeaderMessage};
 use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
 use crate::blockchain::peer::PeerIdType;
 use std::thread;
@@ -19,9 +19,17 @@ impl MessageHandler {
         message_receiver: Receiver<(ClientMessage, PeerIdType)>,
         peer_sender: Sender<ClientEvent>,
         leader_notify: Arc<(Mutex<bool>, Condvar)>,
+        leader_handler_sender: Sender<LeaderMessage>,
     ) -> Self {
         let thread_handle = Some(thread::spawn(move || {
-            MessageHandler::run(own_id, message_receiver, peer_sender, leader_notify).unwrap();
+            MessageHandler::run(
+                own_id,
+                message_receiver,
+                peer_sender,
+                leader_notify,
+                leader_handler_sender,
+            )
+            .unwrap();
         }));
         MessageHandler { thread_handle }
     }
@@ -31,8 +39,9 @@ impl MessageHandler {
         message_receiver: Receiver<(ClientMessage, PeerIdType)>,
         peer_sender: Sender<ClientEvent>,
         leader_notify: Arc<(Mutex<bool>, Condvar)>,
+        leader_handler_sender: Sender<LeaderMessage>,
     ) -> io::Result<()> {
-        let mut processor = MessageProcessor::new(own_id);
+        let mut processor = MessageProcessor::new(own_id, leader_handler_sender);
         for (message, peer_id) in message_receiver {
             let (mutex, cv) = &*leader_notify;
             if let Ok(leader_lock) = mutex.lock() {
@@ -61,18 +70,18 @@ impl MessageHandler {
 
 struct MessageProcessor {
     id: PeerIdType,
-    leader: PeerIdType,
     lock: CentralizedLock,
     blockchain: Blockchain,
+    leader_handler_sender: Sender<LeaderMessage>,
 }
 
 impl MessageProcessor {
-    pub fn new(own_id: PeerIdType) -> Self {
+    pub fn new(own_id: PeerIdType, leader_handler_sender: Sender<LeaderMessage>) -> Self {
         MessageProcessor {
             id: own_id,
-            leader: 0,
             lock: CentralizedLock::new(),
             blockchain: Blockchain::new(),
+            leader_handler_sender,
         }
     }
 
@@ -132,7 +141,14 @@ impl MessageProcessor {
     }
 
     fn is_leader(&self) -> bool {
-        self.id == self.leader
+        self.id == self.retrieve_leader()
+    }
+
+    fn retrieve_leader(&self) -> PeerIdType {
+        let (response_sender, response_receiver) = channel();
+        let message = LeaderMessage::CurrentLeaderLocal { response_sender };
+        self.leader_handler_sender.send(message).unwrap();
+        response_receiver.recv().unwrap()
     }
 }
 
