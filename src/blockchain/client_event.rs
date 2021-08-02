@@ -52,7 +52,7 @@ impl ClientMessage {
                     "lock write".to_owned()
                 }
             }
-            ClientMessage::StillAlive {} => format!("alive"),
+            ClientMessage::StillAlive {} => "alive".to_owned(),
             ClientMessage::TodoMessage { msg } => format!("TODO! {}", msg),
         }
     }
@@ -134,11 +134,11 @@ impl LeaderMessage {
                 format!("le {} {}", request_id, time_epoch.as_secs())
             }
 
-            LeaderMessage::OkMessage {} => format!("ok"),
+            LeaderMessage::OkMessage {} => "ok".to_owned(),
             LeaderMessage::CoordinatorMessage { connection_id } => {
                 format!("coordinator {}", connection_id)
             }
-            LeaderMessage::StillAlive {} => format!("alive"),
+            LeaderMessage::StillAlive {} => "alive".to_owned(),
             LeaderMessage::TodoMessage { msg: _ } => todo!(),
         }
     }

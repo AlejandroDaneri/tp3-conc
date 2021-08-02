@@ -44,6 +44,7 @@ impl PeerHandler {
                     // TODO: leader election
                 }
                 ClientEvent::PeerMessage { message, peer_id } => {
+                    println!("sending message to {}: {:?}", peer_id, message);
                     if let Some(peer) = connected_peers.get(&peer_id) {
                         let sent = peer.write_message(message);
                         if sent.is_err() {

@@ -13,38 +13,33 @@ pub struct MessageHandler {
     thread_handle: Option<thread::JoinHandle<()>>,
 }
 
-struct MessageProcessor {
-    id: PeerIdType,
-    leader: PeerIdType,
-    lock: CentralizedLock,
-    blockchain: Blockchain,
-}
-
 impl MessageHandler {
     pub fn new(
+        own_id: PeerIdType,
         message_receiver: Receiver<(ClientMessage, PeerIdType)>,
         peer_sender: Sender<ClientEvent>,
         leader_notify: Arc<(Mutex<bool>, Condvar)>,
     ) -> Self {
         let thread_handle = Some(thread::spawn(move || {
-            MessageHandler::run(message_receiver, peer_sender, leader_notify).unwrap();
+            MessageHandler::run(own_id, message_receiver, peer_sender, leader_notify).unwrap();
         }));
         MessageHandler { thread_handle }
     }
 
     fn run(
+        own_id: PeerIdType,
         message_receiver: Receiver<(ClientMessage, PeerIdType)>,
         peer_sender: Sender<ClientEvent>,
         leader_notify: Arc<(Mutex<bool>, Condvar)>,
     ) -> io::Result<()> {
-        let mut processor = MessageProcessor::new();
+        let mut processor = MessageProcessor::new(own_id);
         for (message, peer_id) in message_receiver {
             let (mutex, cv) = &*leader_notify;
-            println!("Checking leader");
-            if let Ok(mut leader_lock) = mutex.lock() {
-                let _guard = cv.wait_while(leader_lock, |waiting| *waiting).unwrap();
+            if let Ok(leader_lock) = mutex.lock() {
+                let _guard = cv
+                    .wait_while(leader_lock, |leader_busy| *leader_busy)
+                    .unwrap();
             }
-            println!("Leader available");
             if let Some(response) = processor.process_message(message, peer_id) {
                 peer_sender
                     .send(ClientEvent::PeerMessage {
@@ -64,10 +59,17 @@ impl MessageHandler {
     }
 }
 
+struct MessageProcessor {
+    id: PeerIdType,
+    leader: PeerIdType,
+    lock: CentralizedLock,
+    blockchain: Blockchain,
+}
+
 impl MessageProcessor {
-    pub fn new() -> Self {
+    pub fn new(own_id: PeerIdType) -> Self {
         MessageProcessor {
-            id: 0,
+            id: own_id,
             leader: 0,
             lock: CentralizedLock::new(),
             blockchain: Blockchain::new(),
@@ -108,19 +110,19 @@ impl MessageProcessor {
                         self.blockchain.add_transaction(transaction);
                     }
                 }
-                Some(ClientMessage::TodoMessage { msg: format!("wb") })
+                Some(ClientMessage::TodoMessage {
+                    msg: "wb".to_owned(),
+                })
             }
 
             ClientMessage::LockRequest { read_only: _ } => {
-                // si me llega esto deberia ser lider
-                // soy lider?
                 if self.lock.acquire(peer_id) == LockResult::Acquired {
                     Some(ClientMessage::TodoMessage {
-                        msg: format!("lock acquired"),
+                        msg: "lock acquired".to_owned(),
                     })
                 } else {
                     Some(ClientMessage::TodoMessage {
-                        msg: format!("lock failed"),
+                        msg: "lock failed".to_owned(),
                     })
                 }
             }

@@ -70,16 +70,15 @@ impl LeaderProcessor {
             match receiver.recv_timeout(LEADER_ELECTION_TIMEOUT) {
                 Ok(message) => {
                     let (mutex, cv) = &*leader_election_notify;
-                    if let Ok(mut leader_ready) = mutex.lock() {
-                        *leader_ready = false;
+                    if let Ok(mut leader_busy) = mutex.lock() {
+                        *leader_busy = true;
                     }
                     cv.notify_all();
                 }
                 Err(RecvTimeoutError::Timeout) => {
-                    println!("Leader election finished!");
                     let (mutex, cv) = &*leader_election_notify;
-                    if let Ok(mut leader_ready) = mutex.lock() {
-                        *leader_ready = true;
+                    if let Ok(mut leader_busy) = mutex.lock() {
+                        *leader_busy = false;
                     }
                     cv.notify_all();
                 }
