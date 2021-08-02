@@ -25,7 +25,15 @@ pub enum ClientEvent {
         message: LeaderMessage,
     },
 }
-
+impl ClientEvent {
+    pub fn serialize(&self) -> String {
+        match self {
+            ClientEvent::UserInput { message } => message.serialize(),
+            ClientEvent::LeaderEvent { message } => message.serialize(),
+            _ => unreachable!(),
+        }
+    }
+}
 #[derive(Clone, Debug)]
 pub enum ClientMessage {
     ReadBlockchainRequest {},

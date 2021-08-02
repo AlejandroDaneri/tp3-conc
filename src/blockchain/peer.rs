@@ -13,7 +13,7 @@ pub struct Peer {
     id: PeerIdType,
     recv_thread: Option<thread::JoinHandle<()>>,
     send_thread: Option<thread::JoinHandle<()>>,
-    sender: Option<Sender<ClientMessage>>,
+    sender: Option<Sender<ClientEvent>>,
 }
 
 impl Peer {
@@ -52,7 +52,7 @@ impl Peer {
 
     fn send_messages(
         mut stream: TcpStream,
-        receiver: Receiver<ClientMessage>,
+        receiver: Receiver<ClientEvent>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         for event in receiver {
             let buf = event.serialize();
@@ -63,18 +63,22 @@ impl Peer {
 
     pub fn write_message(&self, msg: ClientMessage) -> io::Result<()> {
         match &self.sender {
-            Some(sender) => sender.send(msg).map_err(|_| {
-                io::Error::new(io::ErrorKind::Other, "Error while sending message to peer")
-            }),
+            Some(sender) => sender
+                .send(ClientEvent::UserInput { message: msg })
+                .map_err(|_| {
+                    io::Error::new(io::ErrorKind::Other, "Error while sending message to peer")
+                }),
             None => unreachable!(),
         }
     }
 
     pub fn write_message_leader(&self, msg: LeaderMessage) -> io::Result<()> {
         match &self.sender {
-            Some(sender) => sender.send(msg).map_err(|_| {
-                io::Error::new(io::ErrorKind::Other, "Error while sending message to peer")
-            }),
+            Some(sender) => sender
+                .send(ClientEvent::LeaderEvent { message: msg })
+                .map_err(|_| {
+                    io::Error::new(io::ErrorKind::Other, "Error while sending message to peer")
+                }),
             None => unreachable!(),
         }
     }

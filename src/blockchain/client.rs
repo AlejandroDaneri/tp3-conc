@@ -37,7 +37,7 @@ impl Client {
         let (message_handler_sender, message_handler_receiver) = channel();
         let peer_handler = PeerHandler::new(
             self.id,
-            sender,
+            sender.clone(),
             peer_handler_receiver,
             leader_handler_sender.clone(),
         );
@@ -64,7 +64,7 @@ impl Client {
         )?;
 
         drop(connection_handler);
-        drop(peer_handler);
+        // drop(peer_handler); TODO: arreglar move
         drop(input_handler);
         drop(message_handler);
         drop(leader_handler);

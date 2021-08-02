@@ -53,7 +53,7 @@ impl LeaderProcessor {
     fn notify_all(&self, _id: u32) {
         println!("----notify----");
 
-        for (peer_pid, peer) in self.peer_handler.connected_peers.iter() {
+        for (_peer_pid, peer) in self.peer_handler.connected_peers.iter() {
             peer.write_message_leader(LeaderMessage::CoordinatorMessage {
                 connection_id: self.peer_handler.own_id,
             });
@@ -121,15 +121,14 @@ impl LeaderProcessor {
         }
     }
 
-    fn send_leader_request(&self) {
-        let mut peer_handler = self.peer_handler;
+    fn send_leader_request(&mut self) {
         println!("MANDE LIDER");
         let mut higher_alive = false;
-        for (peer_pid, peer) in peer_handler.connected_peers.iter() {
-            if peer_pid > &(peer_handler.own_id) {
+        for (peer_pid, peer) in self.peer_handler.connected_peers.iter() {
+            if peer_pid > &(self.peer_handler.own_id) {
                 println!("hay peer que puede ser lider");
                 let response = peer.write_message_leader(LeaderMessage::LeaderElectionRequest {
-                    request_id: peer_handler.own_id,
+                    request_id: self.peer_handler.own_id,
                     timestamp: SystemTime::now(),
                 });
 
@@ -144,9 +143,9 @@ impl LeaderProcessor {
             println!("NO SOY NUEVO LIDER");
             return;
         }
-        self.current_leader = peer_handler.own_id;
+        self.current_leader = self.peer_handler.own_id;
         println!("SOY NUEVO LIDER");
-        self.notify_all(peer_handler.own_id);
+        self.notify_all(self.peer_handler.own_id);
     }
 }
 

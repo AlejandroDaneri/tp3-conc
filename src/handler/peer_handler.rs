@@ -52,7 +52,7 @@ impl PeerHandler {
         own_id: PeerIdType,
         receiver: Receiver<ClientEvent>,
         sender: Sender<ClientEvent>,
-        leader_handler_sender: Sender<LeaderMessage>,
+        _leader_handler_sender: Sender<LeaderMessage>,
     ) -> io::Result<()> {
         for event in receiver {
             match event {
