@@ -35,26 +35,25 @@ impl Client {
         let (leader_handler_sender, leader_handler_receiver) = channel();
         let (peer_handler_sender, peer_handler_receiver) = channel();
         let (message_handler_sender, message_handler_receiver) = channel();
-
+        let peer_handler = PeerHandler::new(
+            self.id,
+            sender,
+            peer_handler_receiver,
+            leader_handler_sender.clone(),
+        );
         let leader_notify = Arc::new((Mutex::new(true), Condvar::new()));
         let leader_handler =
             LeaderHandler::new(leader_handler_receiver, peer_handler, leader_notify.clone());
 
         let connection_handler = ConnectionHandler::new(sender.clone(), port_from, port_to);
         let input_handler = InputHandler::new(source, sender.clone());
-        let leader_handler = LeaderHandler::new(leader_receiver, leader_notify.clone());
-        let peer_handler = PeerHandler::new(
-            self.id,
-            sender,
-            peer_handler_receiver,
-            leader_sender.clone(),
-        );
+
         let message_handler = MessageHandler::new(
             self.id,
             message_handler_receiver,
             peer_handler_sender.clone(),
             leader_notify,
-            leader_sender.clone(),
+            leader_handler_sender.clone(),
         );
 
         self.dispatch_messages(

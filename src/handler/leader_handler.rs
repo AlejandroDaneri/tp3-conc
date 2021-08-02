@@ -67,44 +67,11 @@ impl LeaderProcessor {
         println!("----notify----");
 
         for (peer_pid, peer) in self.peer_handler.connected_peers.iter() {
-            peer.write_message(LeaderMessage::CoordinatorMessage {
+            peer.write_message_leader(LeaderMessage::CoordinatorMessage {
                 connection_id: self.peer_handler.own_id,
             });
         }
     }
-    // TODO: arreglar conflicto con la def de abajo
-    // pub fn leader_processor(&self, receiver: Receiver<LeaderMessage>) {
-    //     while let Ok(message) = receiver.recv() {
-    //         match message {
-    //             LeaderMessage::LeaderElectionRequest {
-    //                 request_id,
-    //                 timestamp: _,
-    //             } => {
-    //                 //TODO: usar timestamp
-    //                 if request_id > self.peer_handler.own_id {
-    //                     return;
-    //                 }
-    //                 let guard = thread::spawn(move || {
-    //                     LeaderHandler::send_leader_request(self.peer_handler)
-    //                 });
-
-    //                 let asker = self
-    //                     .peer_handler
-    //                     .connected_peers
-    //                     .get(&(&request_id))
-    //                     .unwrap();
-    //                 asker.write_message(LeaderMessage::OkMessage {});
-    //                 guard.join()
-    //             }
-    //             LeaderMessage::CoordinatorMessage { connection_id } => {
-    //                 self.actual_leader = connection_id
-    //             }
-    //             LeaderMessage::StillAlive {} => todo!(),
-    //             LeaderMessage::TodoMessage { msg: _ } => todo!(),
-    //             LeaderMessage::OkMessage => {}
-    //         }
-    //     }
-    // }
     pub fn leader_processor(
         &mut self,
         receiver: Receiver<LeaderMessage>,
@@ -137,51 +104,46 @@ impl LeaderProcessor {
         Ok(())
     }
 
-    fn process_message(&mut self, message: LeaderMessage) -> io::Result<()> {
+    fn process_message(&mut self, message: LeaderMessage) {
         match message {
             LeaderMessage::LeaderElectionRequest {
                 request_id,
                 timestamp: _,
             } => {
-                self.current_leader = request_id;
-                /*
                 //TODO: usar timestamp
-                if request_id > self.id {
-                    return Some(LeaderMessage::TodoMessage {
-                        msg: "Yo no puedo ser lider".to_owned(),
-                    });
+                if request_id > self.peer_handler.own_id {
+                    return;
                 }
-                let leader = self.connected_peers.get(&(self.leader)).unwrap();
-                let response = leader.write_message(ClientMessage::StillAlive {});
-                if response.is_ok() {
-                    return Some(ClientMessage::TodoMessage {
-                        msg: format!("el lider sigue siendo: {}", self.leader),
-                    });
-                }
-                //thread::spawn(move || Client::send_leader_request(self, self.id));
-                */
-                // Some(LeaderMessage::TodoMessage {
-                //     msg: "Bully OK".to_owned(),
-                // })
+                let guard = thread::spawn(move || self.send_leader_request());
+
+                let asker = self
+                    .peer_handler
+                    .connected_peers
+                    .get(&(&request_id))
+                    .unwrap();
+                asker.write_message_leader(LeaderMessage::OkMessage {});
+                guard.join();
             }
             LeaderMessage::CurrentLeaderLocal { response_sender } => {
                 response_sender.send(self.current_leader).unwrap();
             }
-            LeaderMessage::CoordinatorMessage { connection_id: _ } => todo!(),
+            LeaderMessage::CoordinatorMessage { connection_id } => {
+                self.current_leader = connection_id
+            }
             LeaderMessage::StillAlive {} => todo!(),
             LeaderMessage::TodoMessage { msg: _ } => todo!(),
             LeaderMessage::OkMessage => todo!(),
         }
-        Ok(())
     }
 
-    pub fn send_leader_request(&self, peer_handler: PeerHandler) {
+    fn send_leader_request(&self) {
+        let mut peer_handler = self.peer_handler;
         println!("MANDE LIDER");
         let mut higher_alive = false;
         for (peer_pid, peer) in peer_handler.connected_peers.iter() {
             if peer_pid > &(peer_handler.own_id) {
                 println!("hay peer que pueden ser lider");
-                let response = peer.write_message(LeaderMessage::LeaderElectionRequest {
+                let response = peer.write_message_leader(LeaderMessage::LeaderElectionRequest {
                     request_id: peer_handler.own_id,
                     timestamp: SystemTime::now(),
                 });
@@ -195,7 +157,7 @@ impl LeaderProcessor {
             println!("NO SOY NUEVO LIDER");
             return;
         }
-        self.actual_leader = peer_handler.own_id;
+        self.current_leader = peer_handler.own_id;
         println!("SOY NUEVO LIDER");
         self.notify_all(peer_handler.own_id);
     }

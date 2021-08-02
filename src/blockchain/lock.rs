@@ -81,9 +81,3 @@ impl Default for CentralizedLock {
         Self::new()
     }
 }
-
-impl Default for CentralizedLock {
-    fn default() -> Self {
-        Self::new()
-    }
-}
