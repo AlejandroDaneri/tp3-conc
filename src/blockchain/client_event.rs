@@ -47,9 +47,9 @@ impl ClientMessage {
             }
             ClientMessage::LockRequest { read_only } => {
                 if *read_only {
-                    "lock read".to_owned()
+                    "lock true".to_owned()
                 } else {
-                    "lock write".to_owned()
+                    "lock false".to_owned()
                 }
             }
             ClientMessage::StillAlive {} => "alive".to_owned(),
