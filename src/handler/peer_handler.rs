@@ -11,6 +11,8 @@ use std::thread;
 #[derive(Debug)]
 pub struct PeerHandler {
     thread_handle: Option<thread::JoinHandle<()>>,
+    pub connected_peers: HashMap<u32, Peer>,
+    pub own_id: u32,
 }
 
 impl PeerHandler {
@@ -19,32 +21,37 @@ impl PeerHandler {
         response_sender: Sender<ClientEvent>,
         request_receiver: Receiver<ClientEvent>,
     ) -> Self {
-        let thread_handle = Some(thread::spawn(move || {
-            PeerHandler::run(own_id, request_receiver, response_sender).unwrap();
+        let mut ret = PeerHandler {
+            thread_handle: None,
+            connected_peers: HashMap::new(),
+            own_id,
+        };
+        ret.thread_handle = Some(thread::spawn(move || {
+            ret.run(own_id, request_receiver, response_sender).unwrap();
         }));
-        PeerHandler { thread_handle }
+        ret
     }
 
     fn run(
+        &mut self,
         own_id: PeerIdType,
         receiver: Receiver<ClientEvent>,
         sender: Sender<ClientEvent>,
     ) -> io::Result<()> {
-        let mut connected_peers = HashMap::new();
         for event in receiver {
             match event {
                 ClientEvent::Connection { mut stream } => {
                     let peer_pid = PeerHandler::exchange_pids(own_id, &mut stream)?;
                     let peer = Peer::new(peer_pid, stream, sender.clone());
-                    connected_peers.insert(peer_pid, peer);
+                    self.connected_peers.insert(peer_pid, peer);
                 }
                 ClientEvent::PeerDisconnected { peer_id } => {
-                    connected_peers.remove(&peer_id);
+                    self.connected_peers.remove(&peer_id);
                     println!("Peer {} removed", peer_id);
                     // TODO: leader election
                 }
                 ClientEvent::PeerMessage { message, peer_id } => {
-                    if let Some(peer) = connected_peers.get(&peer_id) {
+                    if let Some(peer) = self.connected_peers.get(&peer_id) {
                         let sent = peer.write_message(message);
                         if sent.is_err() {
                             println!("Peer {} disconnected!", peer_id);

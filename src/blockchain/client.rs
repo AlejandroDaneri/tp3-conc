@@ -29,9 +29,9 @@ impl Client {
 
         let (peer_handler_sender, peer_handler_receiver) = channel();
         let peer_handler = PeerHandler::new(self.id, sender, peer_handler_receiver);
-        let (leader_sender, leader_receiver) = channel();
 
-        let leader_handler = LeaderHandler::new(leader_receiver);
+        let (leader_handler_sender, leader_handler_receiver) = channel();
+        let leader_handler = LeaderHandler::new(leader_handler_receiver, peer_handler);
 
         let (message_handler_sender, message_handler_receiver) = channel();
         let message_handler =
@@ -40,7 +40,7 @@ impl Client {
         self.dispatch_messages(
             receiver,
             peer_handler_sender,
-            leader_sender,
+            leader_handler_sender,
             message_handler_sender,
         )?;
 
