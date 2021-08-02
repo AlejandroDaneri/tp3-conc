@@ -10,6 +10,7 @@ use crate::handler::message_handler::MessageHandler;
 use crate::handler::peer_handler::PeerHandler;
 
 use super::client_event::LeaderMessage;
+use std::sync::{Arc, Condvar, Mutex};
 
 #[derive(Debug)]
 pub struct Client {
@@ -31,11 +32,16 @@ impl Client {
         let peer_handler = PeerHandler::new(self.id, sender.clone(), peer_handler_receiver);
         let (leader_sender, leader_receiver) = channel();
 
-        let leader_handler = LeaderHandler::new(leader_receiver);
+
+        let leader_notify = Arc::new((Mutex::new(true), Condvar::new()));
+        let leader_handler = LeaderHandler::new(leader_receiver, leader_notify.clone());
 
         let (message_handler_sender, message_handler_receiver) = channel();
-        let message_handler =
-            MessageHandler::new(message_handler_receiver, peer_handler_sender.clone());
+        let message_handler = MessageHandler::new(
+            message_handler_receiver,
+            peer_handler_sender.clone(),
+            leader_notify,
+        );
 
         self.dispatch_messages(
             receiver,
