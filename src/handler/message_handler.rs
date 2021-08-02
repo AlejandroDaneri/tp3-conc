@@ -99,7 +99,9 @@ impl MessageProcessor {
                         self.blockchain.add_transaction(transaction);
                     }
                 }
-                Some(ClientMessage::TodoMessage { msg: format!("wb") })
+                Some(ClientMessage::TodoMessage {
+                    msg: "wb".to_string(),
+                })
             }
 
             ClientMessage::LockRequest { read_only: _ } => {
@@ -107,11 +109,11 @@ impl MessageProcessor {
                 // soy lider?
                 if self.lock.acquire(peer_id) == LockResult::Acquired {
                     Some(ClientMessage::TodoMessage {
-                        msg: format!("lock acquired"),
+                        msg: "lock acquired".to_string(),
                     })
                 } else {
                     Some(ClientMessage::TodoMessage {
-                        msg: format!("lock failed"),
+                        msg: "lock failed".to_string(),
                     })
                 }
             }

@@ -59,3 +59,9 @@ impl CentralizedLock {
         CentralizedLock { peer_id: None }
     }
 }
+
+impl Default for CentralizedLock {
+    fn default() -> Self {
+        Self::new()
+    }
+}

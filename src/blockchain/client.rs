@@ -28,7 +28,7 @@ impl Client {
         let input_handler = InputHandler::new(sender.clone());
 
         let (peer_handler_sender, peer_handler_receiver) = channel();
-        let peer_handler = PeerHandler::new(self.id, sender.clone(), peer_handler_receiver);
+        let peer_handler = PeerHandler::new(self.id, sender, peer_handler_receiver);
         let (leader_sender, leader_receiver) = channel();
 
         let leader_handler = LeaderHandler::new(leader_receiver);
