@@ -75,7 +75,7 @@ impl Peer {
     pub fn write_message_leader(&self, msg: LeaderMessage) -> io::Result<()> {
         match &self.sender {
             Some(sender) => sender
-                .send(ClientEvent::LeaderEvent { message: msg })
+                .send(ClientEvent::LeaderEvent { message: msg, peer_id: self.id })
                 .map_err(|_| {
                     io::Error::new(io::ErrorKind::Other, "Error while sending message to peer")
                 }),

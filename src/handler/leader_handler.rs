@@ -25,7 +25,7 @@ struct LeaderProcessor {
 
 impl LeaderHandler {
     pub fn new(
-        leader_receiver: Receiver<LeaderMessage>,
+        leader_receiver: Receiver<(LeaderMessage, PeerIdType)>,
         peer_handler_sender: Sender<ClientEvent>,
         leader_election_notify: Arc<(Mutex<bool>, Condvar)>,
         own_id: u32,
@@ -43,7 +43,7 @@ impl LeaderHandler {
     }
 
     fn run(
-        message_receiver: Receiver<LeaderMessage>,
+        message_receiver: Receiver<(LeaderMessage, PeerIdType)>,
         peer_handler_sender: Sender<ClientEvent>,
         leader_election_notify: Arc<(Mutex<bool>, Condvar)>,
         own_id: u32,
@@ -64,22 +64,22 @@ impl LeaderProcessor {
         }
     }
 
-    fn notify_all(&self, _id: u32) {
-        println!("----notify----");
+    fn notify_victory(&self, peer_id: u32) {
+        let message = LeaderMessage::VictoryMessage {};
         self.peer_handler_sender
-            .send(ClientEvent::CoordinatorToAll {});
+            .send(ClientEvent::LeaderEvent {message, peer_id});
     }
     pub fn leader_processor(
         &mut self,
-        receiver: Receiver<LeaderMessage>,
+        receiver: Receiver<(LeaderMessage, PeerIdType)>,
         leader_election_notify: Arc<(Mutex<bool>, Condvar)>,
     ) -> io::Result<()> {
         loop {
             match receiver.recv_timeout(LEADER_ELECTION_TIMEOUT) {
-                Ok(message) => {
+                Ok((message, peer_id)) => {
                     let (mutex, cv) = &*leader_election_notify;
                     if let Ok(mut leader_busy) = mutex.lock() {
-                        self.process_message(message);
+                        self.process_message(message, peer_id);
                         *leader_busy = true;
                     }
                     cv.notify_all();
@@ -105,7 +105,7 @@ impl LeaderProcessor {
         Ok(())
     }
 
-    fn process_message(&mut self, message: LeaderMessage) {
+    fn process_message(&mut self, message: LeaderMessage, peer_id: PeerIdType) {
         match message {
             LeaderMessage::LeaderElectionRequest {
                 request_id,
@@ -113,19 +113,20 @@ impl LeaderProcessor {
             } => {
                 self.election_in_progress = true;
                 if request_id < self.own_id {
+                    let message = LeaderMessage::LeaderElectionRequest {
+                        request_id,
+                        timestamp,
+                    };
                     self.peer_handler_sender.send(
-                        ClientEvent::LeaderMessage::LeaderElectionRequest {
-                            request_id,
-                            timestamp,
-                        },
+                        ClientEvent::LeaderEvent { message, peer_id: self.own_id},
                     );
                 }
             }
             LeaderMessage::CurrentLeaderLocal { response_sender } => {
                 response_sender.send(self.current_leader).unwrap();
             }
-            LeaderMessage::CoordinatorMessage { connection_id } => {
-                self.current_leader = connection_id
+            LeaderMessage::VictoryMessage { } => {
+                self.current_leader = peer_id
             }
             LeaderMessage::OkMessage => self.waiting_coordinator = true,
         }

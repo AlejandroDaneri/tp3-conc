@@ -7,6 +7,7 @@ use std::net::TcpStream;
 use std::str::FromStr;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
+use crate::blockchain::client_event::LeaderMessage::LeaderElectionRequest;
 
 #[derive(Debug)]
 pub struct PeerHandler {
@@ -22,7 +23,7 @@ impl PeerProcessor {
         Self { connected_peers }
     }
     pub fn process(
-        &self,
+        &mut self,
         own_id: u32,
         sender: Sender<ClientEvent>,
         receiver: Receiver<ClientEvent>,
@@ -50,18 +51,17 @@ impl PeerProcessor {
                         }
                     }
                 }
-                ClientEvent::CoordinatorToAll {} => {
+                /*ClientEvent::CoordinatorToAll {} => {
                     for (_peer_pid, peer) in self.connected_peers.iter() {
                         peer.write_message_leader(LeaderMessage::CoordinatorMessage {
                             connection_id: own_id,
                         });
                     }
-                }
-
-                ClientEvent::LeaderEvent::LeaderElectionRequest {
+                }*/
+                ClientEvent::LeaderEvent{message: LeaderElectionRequest {
                     request_id,
                     timestamp,
-                } => {
+                }, peer_id} => {
                     self.connected_peers
                         .iter()
                         .filter(|(peer_id, peer)| *peer_id > &own_id)
@@ -87,7 +87,7 @@ impl PeerHandler {
         own_id: PeerIdType,
         response_sender: Sender<ClientEvent>,
         request_receiver: Receiver<ClientEvent>,
-        leader_handler_sender: Sender<LeaderMessage>,
+        leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
     ) -> Self {
         let hash = HashMap::new();
         let thread_handle = thread::spawn(move || {
@@ -109,7 +109,7 @@ impl PeerHandler {
         own_id: PeerIdType,
         receiver: Receiver<ClientEvent>,
         sender: Sender<ClientEvent>,
-        _leader_handler_sender: Sender<LeaderMessage>,
+        _leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
         hash: HashMap<u32, Peer>,
     ) -> io::Result<()> {
         let mut processor = PeerProcessor::new(hash);

@@ -3,7 +3,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 
 use crate::blockchain::blockchain::Blockchain;
-use crate::blockchain::client_event::{ClientEvent, ClientMessage, LeaderMessage};
+use crate::blockchain::client_event::{ClientEvent, ClientMessage, ErrorMessage, LeaderMessage};
 use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
 use crate::blockchain::peer::PeerIdType;
 use std::thread;
@@ -19,7 +19,7 @@ impl MessageHandler {
         message_receiver: Receiver<(ClientMessage, PeerIdType)>,
         peer_sender: Sender<ClientEvent>,
         leader_notify: Arc<(Mutex<bool>, Condvar)>,
-        leader_handler_sender: Sender<LeaderMessage>,
+        leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
     ) -> Self {
         let thread_handle = Some(thread::spawn(move || {
             MessageHandler::run(
@@ -39,7 +39,7 @@ impl MessageHandler {
         message_receiver: Receiver<(ClientMessage, PeerIdType)>,
         peer_sender: Sender<ClientEvent>,
         leader_notify: Arc<(Mutex<bool>, Condvar)>,
-        leader_handler_sender: Sender<LeaderMessage>,
+        leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
     ) -> io::Result<()> {
         let mut processor = MessageProcessor::new(own_id, leader_handler_sender);
         for (message, peer_id) in message_receiver {
@@ -72,11 +72,11 @@ struct MessageProcessor {
     id: PeerIdType,
     lock: CentralizedLock,
     blockchain: Blockchain,
-    leader_handler_sender: Sender<LeaderMessage>,
+    leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
 }
 
 impl MessageProcessor {
-    pub fn new(own_id: PeerIdType, leader_handler_sender: Sender<LeaderMessage>) -> Self {
+    pub fn new(own_id: PeerIdType, leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>) -> Self {
         MessageProcessor {
             id: own_id,
             lock: CentralizedLock::new(),
@@ -94,8 +94,8 @@ impl MessageProcessor {
         match message {
             ClientMessage::ReadBlockchainRequest {} => {
                 if !self.lock.is_owned_by(peer_id) {
-                    return Some(ClientMessage::TodoMessage {
-                        msg: "rb lock not acquired previosly".to_owned(),
+                    return Some(ClientMessage::ErrorResponse {
+                        msg: ErrorMessage::LockNotAcquiredError,
                     });
                 }
                 if self.is_leader() {
@@ -103,8 +103,8 @@ impl MessageProcessor {
                         blockchain: self.blockchain.clone(),
                     })
                 } else {
-                    Some(ClientMessage::TodoMessage {
-                        msg: "rb with no leader".to_owned(),
+                    Some(ClientMessage::ErrorResponse {
+                        msg: ErrorMessage::NotLeaderError,
                     })
                 }
             }
@@ -115,27 +115,29 @@ impl MessageProcessor {
             ClientMessage::WriteBlockchainRequest { transaction } => {
                 if self.is_leader() {
                     {
-                        let _valid = self.blockchain.validate(transaction.clone()); //esto deberia ser la transaccion que recibe cuando devuelve el lock
+                        let _valid = self.blockchain.validate(&transaction); //esto deberia ser la transaccion que recibe cuando devuelve el lock
                         self.blockchain.add_transaction(transaction);
                     }
                 }
-                Some(ClientMessage::TodoMessage {
-                    msg: "wb".to_owned(),
-                })
+                Some(ClientMessage::WriteBlockchainResponse {})
+            }
+            ClientMessage::WriteBlockchainResponse {} => {
+                println!("Write success!");
+                None
             }
 
             ClientMessage::LockRequest { read_only: _ } => {
-                if self.lock.acquire(peer_id) == LockResult::Acquired {
-                    Some(ClientMessage::TodoMessage {
-                        msg: "lock acquired".to_owned(),
-                    })
-                } else {
-                    Some(ClientMessage::TodoMessage {
-                        msg: "lock failed".to_owned(),
-                    })
-                }
+                let acquired = self.lock.acquire(peer_id) == LockResult::Acquired;
+                Some(ClientMessage::LockResponse { acquired })
             }
-            ClientMessage::TodoMessage { msg: _msg } => None,
+            ClientMessage::LockResponse { acquired } => {
+                println!("Lock acquired: {:?}", acquired);
+                None
+            }
+            ClientMessage::ErrorResponse { msg } => {
+                println!("Error! {:?}", msg);
+                None
+            }
         }
     }
 
@@ -146,7 +148,7 @@ impl MessageProcessor {
     fn retrieve_leader(&self) -> PeerIdType {
         let (response_sender, response_receiver) = channel();
         let message = LeaderMessage::CurrentLeaderLocal { response_sender };
-        self.leader_handler_sender.send(message).unwrap();
+        self.leader_handler_sender.send((message, 0)).unwrap();
         response_receiver.recv().unwrap()
     }
 }

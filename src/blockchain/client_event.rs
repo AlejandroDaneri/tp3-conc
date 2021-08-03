@@ -23,14 +23,14 @@ pub enum ClientEvent {
     },
     LeaderEvent {
         message: LeaderMessage,
+        peer_id: PeerIdType
     },
-    CoordinatorToAll {},
 }
 impl ClientEvent {
     pub fn serialize(&self) -> String {
         match self {
             ClientEvent::UserInput { message } => message.serialize(),
-            ClientEvent::LeaderEvent { message } => message.serialize(),
+            ClientEvent::LeaderEvent { message, peer_id} => message.serialize(),
             _ => unreachable!(),
         }
     }
@@ -40,8 +40,16 @@ pub enum ClientMessage {
     ReadBlockchainRequest {},
     ReadBlockchainResponse { blockchain: Blockchain },
     WriteBlockchainRequest { transaction: Transaction },
+    WriteBlockchainResponse {},
     LockRequest { read_only: bool },
-    TodoMessage { msg: String },
+    LockResponse { acquired: bool },
+    ErrorResponse { msg: ErrorMessage },
+}
+
+#[derive(Clone, Debug)]
+pub enum ErrorMessage {
+    NotLeaderError,
+    LockNotAcquiredError,
 }
 
 impl ClientMessage {
@@ -54,14 +62,27 @@ impl ClientMessage {
             ClientMessage::WriteBlockchainRequest { transaction } => {
                 format!("wb {}", transaction.serialize())
             }
+            ClientMessage::WriteBlockchainResponse {} => "wb_response".to_owned(),
             ClientMessage::LockRequest { read_only } => {
                 if *read_only {
-                    "lock true".to_owned()
+                    "lock read".to_owned()
                 } else {
-                    "lock false".to_owned()
+                    "lock write".to_owned()
                 }
             }
-            ClientMessage::TodoMessage { msg } => format!("TODO! {}", msg),
+            ClientMessage::LockResponse { acquired } => {
+                if *acquired {
+                    "lock acquired".to_owned()
+                } else {
+                    "lock failed".to_owned()
+                }
+            }
+            ClientMessage::ErrorResponse {
+                msg: ErrorMessage::NotLeaderError,
+            } => "error not_leader".to_owned(),
+            ClientMessage::ErrorResponse {
+                msg: ErrorMessage::LockNotAcquiredError,
+            } => "error not_locked".to_owned(),
         }
     }
 
@@ -71,8 +92,9 @@ impl ClientMessage {
         match action {
             Some("rb") => Some(ClientMessage::ReadBlockchainRequest {}),
             Some("wb") => ClientMessage::parse_write_blockchain(&mut tokens),
-            Some("lock") => ClientMessage::parse_lock_req(&mut tokens),
-            Some("blockchain") => Some(ClientMessage::parse_blockchain(&mut tokens)),
+            Some("lock") => ClientMessage::parse_lock(&mut tokens),
+            Some("blockchain") => ClientMessage::parse_blockchain(&mut tokens),
+            Some("error") => ClientMessage::parse_error(&mut tokens),
             _ => None,
         }
     }
@@ -82,16 +104,33 @@ impl ClientMessage {
         Some(ClientMessage::WriteBlockchainRequest { transaction })
     }
 
-    fn parse_lock_req(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
+    fn parse_lock(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
         let read_only_str = tokens.next()?;
-        Some(ClientMessage::LockRequest {
-            read_only: read_only_str.parse::<bool>().ok()?,
+        match read_only_str {
+            "read" => Some(ClientMessage::LockRequest { read_only: true }),
+            "write" => Some(ClientMessage::LockRequest { read_only: false }),
+            "acquired" => Some(ClientMessage::LockResponse { acquired: true }),
+            "failed" => Some(ClientMessage::LockResponse { acquired: false }),
+            _ => None,
+        }
+    }
+
+    fn parse_blockchain(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
+        Some(ClientMessage::ReadBlockchainResponse {
+            blockchain: Blockchain::parse(tokens)?,
         })
     }
 
-    fn parse_blockchain(tokens: &mut dyn Iterator<Item = &str>) -> ClientMessage {
-        ClientMessage::ReadBlockchainResponse {
-            blockchain: Blockchain::parse(tokens),
+    fn parse_error(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
+        let error_str = tokens.next()?;
+        match error_str {
+            "not_leader" => Some(ClientMessage::ErrorResponse {
+                msg: ErrorMessage::NotLeaderError,
+            }),
+            "not_locked" => Some(ClientMessage::ErrorResponse {
+                msg: ErrorMessage::LockNotAcquiredError,
+            }),
+            _ => None,
         }
     }
 }
@@ -126,9 +165,7 @@ pub enum LeaderMessage {
         response_sender: Sender<PeerIdType>,
     },
     OkMessage,
-    CoordinatorMessage {
-        connection_id: u32,
-    },
+    VictoryMessage {}
 }
 impl LeaderMessage {
     pub fn serialize(&self) -> String {
@@ -144,8 +181,9 @@ impl LeaderMessage {
                 unreachable!()
             }
             LeaderMessage::OkMessage {} => "ok".to_owned(),
-            LeaderMessage::CoordinatorMessage { connection_id } => {
-                format!("coordinator {}", connection_id)
+            LeaderMessage::VictoryMessage {} => {
+                // TODO: usar timestamp
+                "coordinator".to_owned()
             }
         }
     }
@@ -155,7 +193,7 @@ impl LeaderMessage {
         let action = tokens.next();
         match action {
             Some("le") => LeaderMessage::parse_leader_req(&mut tokens),
-            Some("coordinator") => Some(LeaderMessage::parse_coord(&mut tokens)),
+            Some("coordinator") => Some(LeaderMessage::VictoryMessage {}),
             _ => None,
         }
     }
@@ -167,12 +205,5 @@ impl LeaderMessage {
             request_id: request_id_str.parse::<u32>().ok()?,
             timestamp: SystemTime::now(),
         })
-    }
-
-    fn parse_coord(tokens: &mut dyn Iterator<Item = &str>) -> LeaderMessage {
-        let new_leader_id = tokens.next().unwrap();
-        LeaderMessage::CoordinatorMessage {
-            connection_id: new_leader_id.parse::<u32>().unwrap(),
-        }
     }
 }

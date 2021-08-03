@@ -44,7 +44,7 @@ impl Client {
         let leader_notify = Arc::new((Mutex::new(true), Condvar::new()));
         let leader_handler = LeaderHandler::new(
             leader_handler_receiver,
-            peer_handler_sender,
+            peer_handler_sender.clone(),
             leader_notify.clone(),
             self.id,
         );
@@ -80,7 +80,7 @@ impl Client {
         &mut self,
         event_receiver: Receiver<ClientEvent>,
         peer_sender: Sender<ClientEvent>,
-        leader_sender: Sender<LeaderMessage>,
+        leader_sender: Sender<(LeaderMessage, PeerIdType)>,
         message_sender: Sender<(ClientMessage, PeerIdType)>,
     ) -> io::Result<()> {
         while let Ok(event) = event_receiver.recv() {
@@ -101,10 +101,10 @@ impl Client {
                         io::Error::new(io::ErrorKind::Other, "message sender error")
                     })?;
                 }
-                ClientEvent::LeaderEvent { message } => {
+                ClientEvent::LeaderEvent { message , peer_id} => {
                     //parar todo llego un mensaje lider
                     leader_sender
-                        .send(message)
+                        .send((message, peer_id))
                         .map_err(|_| io::Error::new(io::ErrorKind::Other, "leader sender error"))?;
                 }
             }
