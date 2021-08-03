@@ -3,7 +3,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 
 use crate::blockchain::blockchain::Blockchain;
-use crate::blockchain::client_event::{ClientEvent, ClientMessage, LeaderMessage};
+use crate::blockchain::client_event::{ClientEvent, ClientMessage, LeaderMessage, ErrorMessage};
 use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
 use crate::blockchain::peer::PeerIdType;
 use std::thread;
@@ -94,18 +94,14 @@ impl MessageProcessor {
         match message {
             ClientMessage::ReadBlockchainRequest {} => {
                 if !self.lock.is_owned_by(peer_id) {
-                    return Some(ClientMessage::TodoMessage {
-                        msg: "rb lock not acquired previosly".to_owned(),
-                    });
+                    return Some(ClientMessage::ErrorResponse {msg: ErrorMessage::LockNotAcquiredError});
                 }
                 if self.is_leader() {
                     Some(ClientMessage::ReadBlockchainResponse {
                         blockchain: self.blockchain.clone(),
                     })
                 } else {
-                    Some(ClientMessage::TodoMessage {
-                        msg: "rb with no leader".to_owned(),
-                    })
+                    Some(ClientMessage::ErrorResponse {msg: ErrorMessage::NotLeaderError})
                 }
             }
             ClientMessage::ReadBlockchainResponse { blockchain } => {
@@ -125,15 +121,16 @@ impl MessageProcessor {
             }
 
             ClientMessage::LockRequest { read_only: _ } => {
-                if self.lock.acquire(peer_id) == LockResult::Acquired {
-                    Some(ClientMessage::TodoMessage {
-                        msg: "lock acquired".to_owned(),
-                    })
-                } else {
-                    Some(ClientMessage::TodoMessage {
-                        msg: "lock failed".to_owned(),
-                    })
-                }
+                let acquired = self.lock.acquire(peer_id) == LockResult::Acquired;
+                Some(ClientMessage::LockResponse { acquired })
+            }
+            ClientMessage::LockResponse { acquired } => {
+                println!("Lock acquired: {:?}", acquired);
+                None
+            }
+            ClientMessage::ErrorResponse { msg } => {
+                println!("Error! {:?}", msg);
+                None
             }
             ClientMessage::StillAlive {} => None,
             ClientMessage::TodoMessage { msg: _msg } => None,

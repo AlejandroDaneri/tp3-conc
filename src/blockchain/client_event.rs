@@ -32,8 +32,16 @@ pub enum ClientMessage {
     ReadBlockchainResponse { blockchain: Blockchain },
     WriteBlockchainRequest { transaction: Transaction },
     LockRequest { read_only: bool },
+    LockResponse { acquired: bool },
     StillAlive {},
+    ErrorResponse { msg: ErrorMessage },
     TodoMessage { msg: String },
+}
+
+#[derive(Clone, Debug)]
+pub enum ErrorMessage {
+    NotLeaderError,
+    LockNotAcquiredError
 }
 
 impl ClientMessage {
@@ -48,12 +56,21 @@ impl ClientMessage {
             }
             ClientMessage::LockRequest { read_only } => {
                 if *read_only {
-                    "lock true".to_owned()
+                    "lock read".to_owned()
                 } else {
-                    "lock false".to_owned()
+                    "lock write".to_owned()
+                }
+            }
+            ClientMessage::LockResponse { acquired} => {
+                if *acquired {
+                    "lock acquired".to_owned()
+                } else {
+                    "lock failed".to_owned()
                 }
             }
             ClientMessage::StillAlive {} => "alive".to_owned(),
+            ClientMessage::ErrorResponse { msg: ErrorMessage::NotLeaderError } => { "error not_leader".to_owned() }
+            ClientMessage::ErrorResponse { msg: ErrorMessage::LockNotAcquiredError } => { "error not_locked".to_owned() }
             ClientMessage::TodoMessage { msg } => format!("TODO! {}", msg),
         }
     }
@@ -64,8 +81,9 @@ impl ClientMessage {
         match action {
             Some("rb") => Some(ClientMessage::ReadBlockchainRequest {}),
             Some("wb") => ClientMessage::parse_write_blockchain(&mut tokens),
-            Some("lock") => ClientMessage::parse_lock_req(&mut tokens),
-            Some("blockchain") => Some(ClientMessage::parse_blockchain(&mut tokens)),
+            Some("lock") => ClientMessage::parse_lock(&mut tokens),
+            Some("blockchain") => ClientMessage::parse_blockchain(&mut tokens),
+            Some("error") => ClientMessage::parse_error(&mut tokens),
             _ => None,
         }
     }
@@ -75,16 +93,29 @@ impl ClientMessage {
         Some(ClientMessage::WriteBlockchainRequest { transaction })
     }
 
-    fn parse_lock_req(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
+    fn parse_lock(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
         let read_only_str = tokens.next()?;
-        Some(ClientMessage::LockRequest {
-            read_only: read_only_str.parse::<bool>().ok()?,
+        match read_only_str {
+            "read" => Some(ClientMessage::LockRequest { read_only: true }),
+            "write" => Some(ClientMessage::LockRequest { read_only: false }),
+            "acquired" => Some(ClientMessage::LockResponse { acquired: true }),
+            "failed" => Some(ClientMessage::LockResponse { acquired: false }),
+            _ => None
+        }
+    }
+
+    fn parse_blockchain(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
+        Some(ClientMessage::ReadBlockchainResponse {
+            blockchain: Blockchain::parse(tokens)?,
         })
     }
 
-    fn parse_blockchain(tokens: &mut dyn Iterator<Item = &str>) -> ClientMessage {
-        ClientMessage::ReadBlockchainResponse {
-            blockchain: Blockchain::parse(tokens),
+    fn parse_error(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
+        let error_str = tokens.next()?;
+        match error_str {
+            "not_leader" => Some(ClientMessage::ErrorResponse { msg: ErrorMessage::NotLeaderError }),
+            "not_locked" => Some(ClientMessage::ErrorResponse { msg: ErrorMessage::LockNotAcquiredError }),
+            _ => None
         }
     }
 }
