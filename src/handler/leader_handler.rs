@@ -1,12 +1,12 @@
 use std::{io, sync::mpsc::Receiver, thread, time::SystemTime};
 
+use crate::blockchain::client_event::ClientEvent;
 use crate::blockchain::{client_event::LeaderMessage, peer::PeerIdType};
 
-use super::peer_handler::PeerHandler;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-use std::sync::mpsc::RecvTimeoutError;
+use std::sync::mpsc::{RecvTimeoutError, Sender};
 
 #[derive(Debug)]
 pub struct LeaderHandler {
@@ -16,48 +16,54 @@ pub struct LeaderHandler {
 const LEADER_ELECTION_TIMEOUT: Duration = Duration::from_secs(2);
 
 struct LeaderProcessor {
-    peer_handler: PeerHandler,
+    peer_handler_sender: Sender<ClientEvent>,
     current_leader: PeerIdType,
+    own_id: u32,
 }
 
 impl LeaderHandler {
     pub fn new(
         leader_receiver: Receiver<LeaderMessage>,
-        peer_handler: PeerHandler,
+        peer_handler_sender: Sender<ClientEvent>,
         leader_election_notify: Arc<(Mutex<bool>, Condvar)>,
+        own_id: u32,
     ) -> Self {
         let thread_handle = Some(thread::spawn(move || {
-            LeaderHandler::run(leader_receiver, peer_handler, leader_election_notify).unwrap();
+            LeaderHandler::run(
+                leader_receiver,
+                peer_handler_sender,
+                leader_election_notify,
+                own_id,
+            )
+            .unwrap();
         }));
         LeaderHandler { thread_handle }
     }
 
     fn run(
         message_receiver: Receiver<LeaderMessage>,
-        peer_handler: PeerHandler,
+        peer_handler_sender: Sender<ClientEvent>,
         leader_election_notify: Arc<(Mutex<bool>, Condvar)>,
+        own_id: u32,
     ) -> io::Result<()> {
-        let mut processor = LeaderProcessor::new(peer_handler);
+        let mut processor = LeaderProcessor::new(peer_handler_sender, own_id);
         processor.leader_processor(message_receiver, leader_election_notify)
     }
 }
 
 impl LeaderProcessor {
-    pub fn new(peer_handler: PeerHandler) -> Self {
+    pub fn new(peer_handler_sender: Sender<ClientEvent>, own_id: u32) -> Self {
         LeaderProcessor {
-            peer_handler,
             current_leader: 0,
+            peer_handler_sender,
+            own_id,
         }
     }
 
     fn notify_all(&self, _id: u32) {
         println!("----notify----");
-
-        for (_peer_pid, peer) in self.peer_handler.connected_peers.iter() {
-            peer.write_message_leader(LeaderMessage::CoordinatorMessage {
-                connection_id: self.peer_handler.own_id,
-            });
-        }
+        self.peer_handler_sender
+            .send(ClientEvent::CoordinatorToAll {});
     }
     pub fn leader_processor(
         &mut self,
@@ -99,15 +105,13 @@ impl LeaderProcessor {
                 timestamp: _,
             } => {
                 //TODO: usar timestamp
-                if request_id > self.peer_handler.own_id {
+                if request_id > self.own_id {
                     return; //no puedo ser lider, descartado
                 }
-                let asker = self
-                    .peer_handler
-                    .connected_peers
-                    .get(&(&request_id))
-                    .unwrap();
-                asker.write_message_leader(LeaderMessage::OkMessage {});
+
+                self.peer_handler_sender.send(ClientEvent::SendOkTo {
+                    destination_id: request_id,
+                });
                 self.send_leader_request();
             }
             LeaderMessage::CurrentLeaderLocal { response_sender } => {
@@ -125,10 +129,10 @@ impl LeaderProcessor {
         println!("MANDE LIDER");
         let mut higher_alive = false;
         for (peer_pid, peer) in self.peer_handler.connected_peers.iter() {
-            if peer_pid > &(self.peer_handler.own_id) {
+            if peer_pid > &(self.own_id) {
                 println!("hay peer que puede ser lider");
                 let response = peer.write_message_leader(LeaderMessage::LeaderElectionRequest {
-                    request_id: self.peer_handler.own_id,
+                    request_id: self.own_id,
                     timestamp: SystemTime::now(),
                 });
 
@@ -143,9 +147,9 @@ impl LeaderProcessor {
             println!("NO SOY NUEVO LIDER");
             return;
         }
-        self.current_leader = self.peer_handler.own_id;
+        self.current_leader = self.own_id;
         println!("SOY NUEVO LIDER");
-        self.notify_all(self.peer_handler.own_id);
+        self.notify_all(self.own_id);
     }
 }
 

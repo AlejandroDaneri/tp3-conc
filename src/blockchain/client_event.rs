@@ -24,6 +24,10 @@ pub enum ClientEvent {
     LeaderEvent {
         message: LeaderMessage,
     },
+    CoordinatorToAll {},
+    SendOkTo {
+        destination_id: u32,
+    },
 }
 impl ClientEvent {
     pub fn serialize(&self) -> String {
