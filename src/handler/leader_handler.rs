@@ -19,6 +19,8 @@ struct LeaderProcessor {
     peer_handler_sender: Sender<ClientEvent>,
     current_leader: PeerIdType,
     own_id: u32,
+    waiting_coordinator: bool,
+    election_in_progress: bool,
 }
 
 impl LeaderHandler {
@@ -57,6 +59,8 @@ impl LeaderProcessor {
             current_leader: 0,
             peer_handler_sender,
             own_id,
+            waiting_coordinator: false,
+            election_in_progress: false,
         }
     }
 
@@ -76,7 +80,6 @@ impl LeaderProcessor {
                     let (mutex, cv) = &*leader_election_notify;
                     if let Ok(mut leader_busy) = mutex.lock() {
                         self.process_message(message);
-                        // TODO: esperar que llegue coordinador, procesar y ahi si desbloquear
                         *leader_busy = true;
                     }
                     cv.notify_all();
@@ -89,9 +92,13 @@ impl LeaderProcessor {
                     cv.notify_all();
                 }
                 Err(RecvTimeoutError::Disconnected) => {
-                    let (_, cv) = &*leader_election_notify;
-                    cv.notify_all();
-                    break;
+                    if self.election_in_progress && !self.waiting_coordinator {
+                        // send coordinatortoall
+                        self.election_in_progress = false;
+                        let (_, cv) = &*leader_election_notify;
+                        cv.notify_all();
+                        break;
+                    }
                 }
             }
         }
@@ -102,17 +109,17 @@ impl LeaderProcessor {
         match message {
             LeaderMessage::LeaderElectionRequest {
                 request_id,
-                timestamp: _,
+                timestamp,
             } => {
-                //TODO: usar timestamp
-                if request_id > self.own_id {
-                    return; //no puedo ser lider, descartado
+                self.election_in_progress = true;
+                if request_id < self.own_id {
+                    self.peer_handler_sender.send(
+                        ClientEvent::LeaderMessage::LeaderElectionRequest {
+                            request_id,
+                            timestamp,
+                        },
+                    );
                 }
-
-                self.peer_handler_sender.send(ClientEvent::SendOkTo {
-                    destination_id: request_id,
-                });
-                self.send_leader_request();
             }
             LeaderMessage::CurrentLeaderLocal { response_sender } => {
                 response_sender.send(self.current_leader).unwrap();
@@ -120,36 +127,8 @@ impl LeaderProcessor {
             LeaderMessage::CoordinatorMessage { connection_id } => {
                 self.current_leader = connection_id
             }
-            LeaderMessage::StillAlive {} => {}
-            LeaderMessage::OkMessage => {}
+            LeaderMessage::OkMessage => self.waiting_coordinator = true,
         }
-    }
-
-    fn send_leader_request(&mut self) {
-        println!("MANDE LIDER");
-        let mut higher_alive = false;
-        for (peer_pid, peer) in self.peer_handler.connected_peers.iter() {
-            if peer_pid > &(self.own_id) {
-                println!("hay peer que puede ser lider");
-                let response = peer.write_message_leader(LeaderMessage::LeaderElectionRequest {
-                    request_id: self.own_id,
-                    timestamp: SystemTime::now(),
-                });
-
-                // TODO: necesito que alguno me responda por algun canal el OKMEssage para saber que no voy a ser lider
-                if response.is_ok() {
-                    higher_alive = true
-                }
-            }
-        }
-
-        if higher_alive {
-            println!("NO SOY NUEVO LIDER");
-            return;
-        }
-        self.current_leader = self.own_id;
-        println!("SOY NUEVO LIDER");
-        self.notify_all(self.own_id);
     }
 }
 

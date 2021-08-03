@@ -57,6 +57,25 @@ impl PeerProcessor {
                         });
                     }
                 }
+
+                ClientEvent::LeaderEvent::LeaderElectionRequest {
+                    request_id,
+                    timestamp,
+                } => {
+                    self.connected_peers
+                        .iter()
+                        .filter(|(peer_id, peer)| *peer_id > &own_id)
+                        .map(|(peer_id, peer)| {
+                            peer.write_message_leader(LeaderMessage::LeaderElectionRequest {
+                                request_id,
+                                timestamp,
+                            })
+                        });
+                    self.connected_peers
+                        .get(&request_id)
+                        .unwrap()
+                        .write_message_leader(LeaderMessage::OkMessage {});
+                }
                 _ => unreachable!(),
             }
         }

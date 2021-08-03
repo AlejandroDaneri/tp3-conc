@@ -25,9 +25,6 @@ pub enum ClientEvent {
         message: LeaderMessage,
     },
     CoordinatorToAll {},
-    SendOkTo {
-        destination_id: u32,
-    },
 }
 impl ClientEvent {
     pub fn serialize(&self) -> String {
@@ -44,7 +41,6 @@ pub enum ClientMessage {
     ReadBlockchainResponse { blockchain: Blockchain },
     WriteBlockchainRequest { transaction: Transaction },
     LockRequest { read_only: bool },
-    StillAlive {},
     TodoMessage { msg: String },
 }
 
@@ -65,7 +61,6 @@ impl ClientMessage {
                     "lock false".to_owned()
                 }
             }
-            ClientMessage::StillAlive {} => "alive".to_owned(),
             ClientMessage::TodoMessage { msg } => format!("TODO! {}", msg),
         }
     }
@@ -134,7 +129,6 @@ pub enum LeaderMessage {
     CoordinatorMessage {
         connection_id: u32,
     },
-    StillAlive {},
 }
 impl LeaderMessage {
     pub fn serialize(&self) -> String {
@@ -153,7 +147,6 @@ impl LeaderMessage {
             LeaderMessage::CoordinatorMessage { connection_id } => {
                 format!("coordinator {}", connection_id)
             }
-            LeaderMessage::StillAlive {} => "alive".to_owned(),
         }
     }
 

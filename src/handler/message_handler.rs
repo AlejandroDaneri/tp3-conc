@@ -135,7 +135,6 @@ impl MessageProcessor {
                     })
                 }
             }
-            ClientMessage::StillAlive {} => None,
             ClientMessage::TodoMessage { msg: _msg } => None,
         }
     }
