@@ -3,7 +3,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 
 use crate::blockchain::blockchain::Blockchain;
-use crate::blockchain::client_event::{ClientEvent, ClientMessage, LeaderMessage, ErrorMessage};
+use crate::blockchain::client_event::{ClientEvent, ClientMessage, ErrorMessage, LeaderMessage};
 use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
 use crate::blockchain::peer::PeerIdType;
 use std::thread;
@@ -94,14 +94,18 @@ impl MessageProcessor {
         match message {
             ClientMessage::ReadBlockchainRequest {} => {
                 if !self.lock.is_owned_by(peer_id) {
-                    return Some(ClientMessage::ErrorResponse {msg: ErrorMessage::LockNotAcquiredError});
+                    return Some(ClientMessage::ErrorResponse {
+                        msg: ErrorMessage::LockNotAcquiredError,
+                    });
                 }
                 if self.is_leader() {
                     Some(ClientMessage::ReadBlockchainResponse {
                         blockchain: self.blockchain.clone(),
                     })
                 } else {
-                    Some(ClientMessage::ErrorResponse {msg: ErrorMessage::NotLeaderError})
+                    Some(ClientMessage::ErrorResponse {
+                        msg: ErrorMessage::NotLeaderError,
+                    })
                 }
             }
             ClientMessage::ReadBlockchainResponse { blockchain } => {

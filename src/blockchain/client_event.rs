@@ -41,7 +41,7 @@ pub enum ClientMessage {
 #[derive(Clone, Debug)]
 pub enum ErrorMessage {
     NotLeaderError,
-    LockNotAcquiredError
+    LockNotAcquiredError,
 }
 
 impl ClientMessage {
@@ -61,7 +61,7 @@ impl ClientMessage {
                     "lock write".to_owned()
                 }
             }
-            ClientMessage::LockResponse { acquired} => {
+            ClientMessage::LockResponse { acquired } => {
                 if *acquired {
                     "lock acquired".to_owned()
                 } else {
@@ -69,8 +69,12 @@ impl ClientMessage {
                 }
             }
             ClientMessage::StillAlive {} => "alive".to_owned(),
-            ClientMessage::ErrorResponse { msg: ErrorMessage::NotLeaderError } => { "error not_leader".to_owned() }
-            ClientMessage::ErrorResponse { msg: ErrorMessage::LockNotAcquiredError } => { "error not_locked".to_owned() }
+            ClientMessage::ErrorResponse {
+                msg: ErrorMessage::NotLeaderError,
+            } => "error not_leader".to_owned(),
+            ClientMessage::ErrorResponse {
+                msg: ErrorMessage::LockNotAcquiredError,
+            } => "error not_locked".to_owned(),
             ClientMessage::TodoMessage { msg } => format!("TODO! {}", msg),
         }
     }
@@ -100,7 +104,7 @@ impl ClientMessage {
             "write" => Some(ClientMessage::LockRequest { read_only: false }),
             "acquired" => Some(ClientMessage::LockResponse { acquired: true }),
             "failed" => Some(ClientMessage::LockResponse { acquired: false }),
-            _ => None
+            _ => None,
         }
     }
 
@@ -113,9 +117,13 @@ impl ClientMessage {
     fn parse_error(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
         let error_str = tokens.next()?;
         match error_str {
-            "not_leader" => Some(ClientMessage::ErrorResponse { msg: ErrorMessage::NotLeaderError }),
-            "not_locked" => Some(ClientMessage::ErrorResponse { msg: ErrorMessage::LockNotAcquiredError }),
-            _ => None
+            "not_leader" => Some(ClientMessage::ErrorResponse {
+                msg: ErrorMessage::NotLeaderError,
+            }),
+            "not_locked" => Some(ClientMessage::ErrorResponse {
+                msg: ErrorMessage::LockNotAcquiredError,
+            }),
+            _ => None,
         }
     }
 }
