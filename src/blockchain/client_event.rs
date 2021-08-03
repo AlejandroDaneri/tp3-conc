@@ -31,11 +31,11 @@ pub enum ClientMessage {
     ReadBlockchainRequest {},
     ReadBlockchainResponse { blockchain: Blockchain },
     WriteBlockchainRequest { transaction: Transaction },
+    WriteBlockchainResponse {},
     LockRequest { read_only: bool },
     LockResponse { acquired: bool },
     StillAlive {},
     ErrorResponse { msg: ErrorMessage },
-    TodoMessage { msg: String },
 }
 
 #[derive(Clone, Debug)]
@@ -54,6 +54,7 @@ impl ClientMessage {
             ClientMessage::WriteBlockchainRequest { transaction } => {
                 format!("wb {}", transaction.serialize())
             }
+            ClientMessage::WriteBlockchainResponse {} => "wb_response".to_owned(),
             ClientMessage::LockRequest { read_only } => {
                 if *read_only {
                     "lock read".to_owned()
@@ -75,7 +76,6 @@ impl ClientMessage {
             ClientMessage::ErrorResponse {
                 msg: ErrorMessage::LockNotAcquiredError,
             } => "error not_locked".to_owned(),
-            ClientMessage::TodoMessage { msg } => format!("TODO! {}", msg),
         }
     }
 

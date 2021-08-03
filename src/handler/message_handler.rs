@@ -115,13 +115,15 @@ impl MessageProcessor {
             ClientMessage::WriteBlockchainRequest { transaction } => {
                 if self.is_leader() {
                     {
-                        let _valid = self.blockchain.validate(transaction.clone()); //esto deberia ser la transaccion que recibe cuando devuelve el lock
+                        let _valid = self.blockchain.validate(&transaction); //esto deberia ser la transaccion que recibe cuando devuelve el lock
                         self.blockchain.add_transaction(transaction);
                     }
                 }
-                Some(ClientMessage::TodoMessage {
-                    msg: "wb".to_owned(),
-                })
+                Some(ClientMessage::WriteBlockchainResponse {})
+            }
+            ClientMessage::WriteBlockchainResponse {} => {
+                println!("Write success!");
+                None
             }
 
             ClientMessage::LockRequest { read_only: _ } => {
@@ -137,7 +139,6 @@ impl MessageProcessor {
                 None
             }
             ClientMessage::StillAlive {} => None,
-            ClientMessage::TodoMessage { msg: _msg } => None,
         }
     }
 

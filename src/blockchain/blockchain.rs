@@ -160,7 +160,7 @@ impl Blockchain {
         let block = Block::new(transaction, prev_hash).unwrap();
         self.add_block(block);
     }
-    pub fn validate(&self, _transaction: Transaction) -> bool {
+    pub fn validate(&self, _transaction: &Transaction) -> bool {
         true
     }
 
