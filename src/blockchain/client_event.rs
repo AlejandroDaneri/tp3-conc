@@ -103,6 +103,7 @@ impl ClientMessage {
         match action {
             Some("rb") => Some(ClientMessage::ReadBlockchainRequest {}),
             Some("wb") => ClientMessage::parse_write_blockchain(&mut tokens),
+            Some("wb_response") => Some(ClientMessage::WriteBlockchainResponse {}),
             Some("lock") => ClientMessage::parse_lock(&mut tokens),
             Some("blockchain") => ClientMessage::parse_blockchain(&mut tokens),
             Some("error") => ClientMessage::parse_error(&mut tokens),

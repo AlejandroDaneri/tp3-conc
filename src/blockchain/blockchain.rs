@@ -42,6 +42,7 @@ impl Transaction {
 
     pub fn parse(tokens: &mut dyn Iterator<Item = &str>) -> Option<Self> {
         let action = tokens.next();
+        println!("Transaction parse token: {:?}", action);
         match action {
             Some("insert") => Some(Transaction::Insert(TransactionData::parse(tokens)?)),
             Some("remove") => {
@@ -179,14 +180,13 @@ impl Blockchain {
     pub fn parse(tokens: &mut dyn Iterator<Item = &str>) -> Option<Self> {
         let mut blockchain = Blockchain::new();
         while let Some(token) = tokens.next() {
+            println!("Loop start with {:?}", token);
             if token != "end_blockchain" {
                 let transaction = Transaction::parse(tokens)?;
                 let previous_hash = tokens.next()?;
                 let block = Block::new(transaction, previous_hash.parse::<u64>().ok()?).ok()?;
                 blockchain.add_block(block);
-                continue;
             }
-            break;
         }
         Some(blockchain)
     }
@@ -268,5 +268,24 @@ mod tests {
         bc.add_block(block.clone());
         let last_block = bc.get_last().unwrap();
         assert_eq!(*last_block, block);
+    }
+
+    #[test]
+    fn parse_transaction() {
+        let transaction_str = "insert pedro 10 0 insert juan 2 123";
+        let mut tokens = transaction_str.split_whitespace();
+        let transaction = Transaction::parse(&mut tokens);
+        let prev_hash = tokens.next();
+        let transaction_2 = Transaction::parse(&mut tokens);
+        assert!(transaction.is_some());
+        assert!(transaction_2.is_some());
+    }
+
+    #[test]
+    fn parse_blockchain() {
+        let blockchain_str = "blockchain insert pedro 10 0 123 insert juan 2 123 345 end_blockchain";
+        let mut tokens = blockchain_str.split_whitespace().skip(1);
+        let blockchain = Blockchain::parse(&mut tokens);
+        assert!(blockchain.is_some());
     }
 }
