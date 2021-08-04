@@ -42,7 +42,6 @@ impl Transaction {
 
     pub fn parse(tokens: &mut dyn Iterator<Item = &str>) -> Option<Self> {
         let action = tokens.next();
-        println!("Transaction parse token: {:?}", action);
         match action {
             Some("insert") => Some(Transaction::Insert(TransactionData::parse(tokens)?)),
             Some("remove") => {
@@ -179,13 +178,13 @@ impl Blockchain {
 
     pub fn parse(tokens: &mut dyn Iterator<Item = &str>) -> Option<Self> {
         let mut blockchain = Blockchain::new();
-        while let Some(token) = tokens.next() {
-            println!("Loop start with {:?}", token);
-            if token != "end_blockchain" {
-                let transaction = Transaction::parse(tokens)?;
+        loop {
+            if let Some(transaction) = Transaction::parse(tokens) {
                 let previous_hash = tokens.next()?;
                 let block = Block::new(transaction, previous_hash.parse::<u64>().ok()?).ok()?;
                 blockchain.add_block(block);
+            } else {
+                break;
             }
         }
         Some(blockchain)
