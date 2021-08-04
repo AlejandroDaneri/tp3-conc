@@ -123,13 +123,25 @@ impl LeaderProcessor {
             LeaderMessage::LeaderElectionRequest { .. } => {
                 self.election_in_progress = true;
                 // Viene desde un comando de usuario
-                let message = if peer_id == 0 {
-                    LeaderMessage::LeaderElectionRequest { timestamp: SystemTime::now() }
+                if peer_id == 0 {
+                    let message = LeaderMessage::LeaderElectionRequest {
+                        timestamp: SystemTime::now(),
+                    };
+                    println!("Soy 0 por la consola {:?}", message);
+                    self.peer_handler_sender
+                        .send(ClientEvent::LeaderEvent { message, peer_id });
                 } else {
-                    LeaderMessage::OkMessage
+                    let message = LeaderMessage::OkMessage;
+                    println!("Mando a peer {:?}", message);
+                    self.peer_handler_sender
+                        .send(ClientEvent::LeaderEvent { message, peer_id });
+                    let message = LeaderMessage::LeaderElectionRequest {
+                        timestamp: SystemTime::now(),
+                    };
+                    println!("Mando a LE a {:?}", peer_id);
+                    self.peer_handler_sender
+                        .send(ClientEvent::LeaderEvent { message, peer_id });
                 };
-                println!("Enviando a los peers {:?}", message);
-                self.peer_handler_sender.send(ClientEvent::LeaderEvent { message, peer_id });
             }
             // Alguien de pid mayor me dijo "Ok", así que espero el victory
             LeaderMessage::OkMessage => self.waiting_coordinator = true,
@@ -137,7 +149,7 @@ impl LeaderProcessor {
             LeaderMessage::VictoryMessage {} => {
                 println!("new leader: {}", peer_id);
                 self.current_leader = peer_id
-            },
+            }
             LeaderMessage::CurrentLeaderLocal { response_sender } => {
                 println!("Current leader: {}", self.current_leader);
                 response_sender.send(self.current_leader).unwrap();

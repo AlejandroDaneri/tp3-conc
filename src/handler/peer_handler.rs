@@ -30,7 +30,7 @@ impl PeerProcessor {
         receiver: Receiver<ClientEvent>,
     ) -> io::Result<()> {
         for event in receiver {
-            println!("Event: {:?}", event);
+            println!("PH: Processing event: {:?}", event);
             match event {
                 ClientEvent::Connection { mut stream } => {
                     let peer_pid = PeerHandler::exchange_pids(own_id, &mut stream)?;
