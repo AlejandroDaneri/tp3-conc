@@ -138,7 +138,7 @@ impl LeaderProcessor {
                     let message = LeaderMessage::LeaderElectionRequest {
                         timestamp: SystemTime::now(),
                     };
-                    println!("Mando a LE");
+                    println!("Mando LE");
                     self.peer_handler_sender
                         .send(ClientEvent::LeaderEvent { message, peer_id });
                 };
@@ -148,7 +148,8 @@ impl LeaderProcessor {
             // Alguien de pid mayor salió lider electo democráticamente, todos amamos al lider
             LeaderMessage::VictoryMessage {} => {
                 println!("new leader: {}", peer_id);
-                self.current_leader = peer_id
+                self.current_leader = peer_id;
+                self.waiting_coordinator = false;
             }
             LeaderMessage::CurrentLeaderLocal { response_sender } => {
                 println!("Current leader: {}", self.current_leader);
