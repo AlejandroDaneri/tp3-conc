@@ -99,7 +99,8 @@ impl MessageProcessor {
         message: ClientMessage,
         peer_id: u32,
     ) -> Option<ClientMessage> {
-        println!("PROCESS: {:?}", message.serialize());
+        let redirect = message.clone();
+        println!("process_message: {:?}", message);
         match message {
             ClientMessage::ReadBlockchainRequest {} => {
                 if !self.lock.is_owned_by(peer_id) {
@@ -115,8 +116,9 @@ impl MessageProcessor {
                     Some(ClientMessage::ErrorResponse(ErrorMessage::NotLeaderError))
                 }
             }
-            ClientMessage::ReadBlockchainResponse { .. } => {
-                self.output_sender.send(message);
+            ClientMessage::ReadBlockchainResponse { blockchain } => {
+                self.blockchain = blockchain;
+                self.output_sender.send(redirect);
                 None
             }
             ClientMessage::WriteBlockchainRequest { transaction } => {

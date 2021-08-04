@@ -56,12 +56,17 @@ impl InputHandler {
                     }
                     let event = ClientEvent::UserInput { message };
                     input_sender.send(event);
+                    let response = output_receiver.recv().unwrap();
+                    println!("Response: {:?}", response);
                 }
                 ClientMessage::ErrorResponse(ErrorMessage::NotLeaderError) => {
                     println!(
                         "TODO: Ocurrió {:?}, realizar un leader request automático.",
                         response
                     )
+                }
+                ClientMessage::ReadBlockchainResponse {blockchain} => {
+                    println!("Blockchain: {}", blockchain);
                 }
                 _ => println!("{:?}", response),
             }
