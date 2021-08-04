@@ -164,6 +164,7 @@ impl<R: Read> Iterator for ClientEventReader<R> {
     fn next(&mut self) -> Option<<Self as Iterator>::Item> {
         let mut line = String::new();
         self.reader.read_line(&mut line).ok()?;
+        line.pop();
         if let Some(message) = ClientMessage::deserialize(&line) {
             Some(Message::Common(message))
         } else {
@@ -204,6 +205,7 @@ impl LeaderMessage {
         match action {
             Some("le") => LeaderMessage::parse_leader_req(&mut tokens),
             Some("coordinator") => Some(LeaderMessage::VictoryMessage {}),
+            Some("ok") => Some(LeaderMessage::OkMessage {}),
             _ => None,
         }
     }

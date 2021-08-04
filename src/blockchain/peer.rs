@@ -55,7 +55,7 @@ impl Peer {
             }
             sender.send(event)?;
         }
-        println!("No more events!");
+        println!("No more events from {}", peer_id);
         sender.send(ClientEvent::PeerDisconnected { peer_id })?;
         Ok(())
     }

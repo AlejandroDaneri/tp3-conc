@@ -98,7 +98,9 @@ impl Client {
                 ClientEvent::UserInput { message } => {
                     match message {
                         Message::Common(message) => {
-                            message_sender.send((message, 0)).map_err(|_| {
+                            let leader_id = Client::retrieve_leader(&leader_sender);
+                            let event = ClientEvent::PeerMessage{ message, peer_id: leader_id };
+                            peer_sender.send(event).map_err(|_| {
                                 io::Error::new(io::ErrorKind::Other, "message sender error")
                             })?;
                         }
@@ -119,5 +121,12 @@ impl Client {
             }
         }
         Ok(())
+    }
+
+    fn retrieve_leader(leader_sender: &Sender<(LeaderMessage, PeerIdType)>) -> PeerIdType {
+        let (response_sender, response_receiver) = channel();
+        let message = LeaderMessage::CurrentLeaderLocal { response_sender };
+        leader_sender.send((message, 0)).unwrap();
+        response_receiver.recv().unwrap()
     }
 }
