@@ -54,9 +54,10 @@ pub enum ClientMessage {
     ReadBlockchainResponse { blockchain: Blockchain },
     WriteBlockchainRequest { transaction: Transaction },
     WriteBlockchainResponse {},
+    LeaderElectionFinished,
     LockRequest { read_only: bool },
     LockResponse { acquired: bool },
-    ErrorResponse { msg: ErrorMessage },
+    ErrorResponse(ErrorMessage),
 }
 
 #[derive(Clone, Debug)]
@@ -90,12 +91,9 @@ impl ClientMessage {
                     "lock failed\n".to_owned()
                 }
             }
-            ClientMessage::ErrorResponse {
-                msg: ErrorMessage::NotLeaderError,
-            } => "error not_leader\n".to_owned(),
-            ClientMessage::ErrorResponse {
-                msg: ErrorMessage::LockNotAcquiredError,
-            } => "error not_locked\n".to_owned(),
+            ClientMessage::ErrorResponse (ErrorMessage::NotLeaderError) => "error not_leader\n".to_owned(),
+            ClientMessage::ErrorResponse (ErrorMessage::LockNotAcquiredError) => "error not_locked\n".to_owned(),
+            ClientMessage::LeaderElectionFinished {} => "info leader_election_finished".to_owned()
         }
     }
 
@@ -137,12 +135,8 @@ impl ClientMessage {
     fn parse_error(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
         let error_str = tokens.next()?;
         match error_str {
-            "not_leader" => Some(ClientMessage::ErrorResponse {
-                msg: ErrorMessage::NotLeaderError,
-            }),
-            "not_locked" => Some(ClientMessage::ErrorResponse {
-                msg: ErrorMessage::LockNotAcquiredError,
-            }),
+            "not_leader" => Some(ClientMessage::ErrorResponse (ErrorMessage::NotLeaderError)),
+            "not_locked" => Some(ClientMessage::ErrorResponse (ErrorMessage::LockNotAcquiredError)),
             _ => None,
         }
     }
@@ -180,6 +174,7 @@ pub enum LeaderMessage {
     CurrentLeaderLocal { response_sender: Sender<PeerIdType> },
     OkMessage,
     VictoryMessage {},
+    PeerDisconnected
 }
 impl LeaderMessage {
     pub fn serialize(&self) -> String {
@@ -196,6 +191,7 @@ impl LeaderMessage {
                 // TODO: usar timestamp
                 "coordinator\n".to_owned()
             }
+            LeaderMessage::PeerDisconnected => unreachable!()
         }
     }
 
