@@ -27,6 +27,7 @@ impl PeerProcessor {
         own_id: u32,
         sender: Sender<ClientEvent>,
         receiver: Receiver<ClientEvent>,
+        leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>
     ) -> io::Result<()> {
         for event in receiver {
             println!("PH: Processing event: {:?}", event);
@@ -39,7 +40,8 @@ impl PeerProcessor {
                 ClientEvent::PeerDisconnected { peer_id } => {
                     self.connected_peers.remove(&peer_id);
                     println!("Peer {} removed", peer_id);
-                    // TODO: leader election leader_handler_sender.send(LeaderMessage::PeerDisconnected...)
+                    let message = LeaderMessage::PeerDisconnected;
+                    leader_handler_sender.send((message, peer_id));
                 }
                 ClientEvent::PeerMessage { message, peer_id } => {
                     println!("sending message to {}: {:?}", peer_id, message);
@@ -48,26 +50,13 @@ impl PeerProcessor {
                             let sent = peer.write_message(message);
                             if sent.is_err() {
                                 println!("Peer {} disconnected!", peer_id);
-                                // TODO: leader election leader_handler_sender.send(LeaderMessage::PeerDisconnected...)
+                                let message = LeaderMessage::PeerDisconnected;
+                                leader_handler_sender.send((message, peer_id));
                             }
                         }
                         None => {
-                            if peer_id != own_id {
-                                println!("Peer {} disconnected!", peer_id);
-                                // lo mismo que handleo de LeaderMessage::LeaderElectionRequest
-                                self.connected_peers
-                                    .iter()
-                                    .filter(|(&peer_idd, _)| peer_idd > own_id)
-                                    .for_each(|(peer_idd, peer)| {
-                                        println!("Pidiendo ser lider a {}", peer_idd);
-                                        peer.write_message_leader(
-                                            LeaderMessage::LeaderElectionRequest {
-                                                timestamp: SystemTime::now(),
-                                            },
-                                        );
-                                    });
-                            }
-                            // TODO: el mensaje que fallo no se reenvia
+                            let message = LeaderMessage::PeerDisconnected;
+                            leader_handler_sender.send((message, peer_id));
                         }
                     }
                 }
@@ -132,11 +121,11 @@ impl PeerHandler {
         own_id: PeerIdType,
         receiver: Receiver<ClientEvent>,
         sender: Sender<ClientEvent>,
-        _leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
+        leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
         hash: HashMap<u32, Peer>,
     ) -> io::Result<()> {
         let mut processor = PeerProcessor::new(hash);
-        processor.process(own_id, sender, receiver)
+        processor.process(own_id, sender, receiver, leader_handler_sender)
     }
 
     fn exchange_pids(own_id: PeerIdType, stream: &mut TcpStream) -> io::Result<u32> {

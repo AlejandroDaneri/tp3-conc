@@ -35,6 +35,7 @@ impl Client {
         let (leader_handler_sender, leader_handler_receiver) = channel();
         let (peer_handler_sender, peer_handler_receiver) = channel();
         let (message_handler_sender, message_handler_receiver) = channel();
+        let (output_sender, output_receiver) = channel();
         let peer_handler = PeerHandler::new(
             self.id,
             peer_handler_receiver,
@@ -45,12 +46,13 @@ impl Client {
         let leader_handler = LeaderHandler::new(
             leader_handler_receiver,
             peer_handler_sender.clone(),
+            output_sender.clone(),
             leader_notify.clone(),
             self.id,
         );
 
         let connection_handler = ConnectionHandler::new(sender.clone(), port_from, port_to);
-        let input_handler = InputHandler::new(source, sender);
+        let input_handler = InputHandler::new(source, sender, output_receiver);
 
         let message_handler = MessageHandler::new(
             self.id,
@@ -58,6 +60,7 @@ impl Client {
             peer_handler_sender.clone(),
             leader_notify,
             leader_handler_sender.clone(),
+            output_sender
         );
 
         self.dispatch_messages(

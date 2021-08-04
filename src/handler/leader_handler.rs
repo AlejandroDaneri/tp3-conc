@@ -1,6 +1,6 @@
 use std::{io, sync::mpsc::Receiver, thread};
 
-use crate::blockchain::client_event::ClientEvent;
+use crate::blockchain::client_event::{ClientEvent, ClientMessage};
 use crate::blockchain::{client_event::LeaderMessage, peer::PeerIdType};
 
 use std::sync::{Arc, Condvar, Mutex};
@@ -17,16 +17,19 @@ const LEADER_ELECTION_TIMEOUT: Duration = Duration::from_secs(2);
 
 struct LeaderProcessor {
     peer_handler_sender: Sender<ClientEvent>,
+    output_sender: Sender<ClientMessage>,
     current_leader: PeerIdType,
     own_id: u32,
     waiting_coordinator: bool,
     election_in_progress: bool,
+    election_by_user: bool
 }
 
 impl LeaderHandler {
     pub fn new(
         leader_receiver: Receiver<(LeaderMessage, PeerIdType)>,
         peer_handler_sender: Sender<ClientEvent>,
+        output_sender: Sender<ClientMessage>,
         leader_election_notify: Arc<(Mutex<bool>, Condvar)>,
         own_id: u32,
     ) -> Self {
@@ -34,6 +37,7 @@ impl LeaderHandler {
             LeaderHandler::run(
                 leader_receiver,
                 peer_handler_sender,
+                output_sender,
                 leader_election_notify,
                 own_id,
             )
@@ -45,22 +49,25 @@ impl LeaderHandler {
     fn run(
         message_receiver: Receiver<(LeaderMessage, PeerIdType)>,
         peer_handler_sender: Sender<ClientEvent>,
+        output_sender: Sender<ClientMessage>,
         leader_election_notify: Arc<(Mutex<bool>, Condvar)>,
         own_id: u32,
     ) -> io::Result<()> {
-        let mut processor = LeaderProcessor::new(peer_handler_sender, own_id);
-        processor.leader_processor(message_receiver, leader_election_notify)
+        let mut processor = LeaderProcessor::new(own_id, peer_handler_sender, output_sender);
+        processor.run(message_receiver, leader_election_notify)
     }
 }
 
 impl LeaderProcessor {
-    pub fn new(peer_handler_sender: Sender<ClientEvent>, own_id: u32) -> Self {
+    pub fn new(own_id: u32, peer_handler_sender: Sender<ClientEvent>, output_sender: Sender<ClientMessage>) -> Self {
         LeaderProcessor {
             current_leader: 0,
             peer_handler_sender,
+            output_sender,
             own_id,
             waiting_coordinator: false,
             election_in_progress: false,
+            election_by_user: false
         }
     }
 
@@ -71,7 +78,7 @@ impl LeaderProcessor {
             peer_id: self.own_id,
         });
     }
-    pub fn leader_processor(
+    pub fn run(
         &mut self,
         receiver: Receiver<(LeaderMessage, PeerIdType)>,
         leader_election_notify: Arc<(Mutex<bool>, Condvar)>,
@@ -96,6 +103,11 @@ impl LeaderProcessor {
                         if !self.waiting_coordinator {
                             self.notify_victory();
                             self.current_leader = self.own_id;
+                            if self.election_by_user {
+                                println!("destrabando");
+                                self.output_sender.send(ClientMessage::LeaderElectionFinished).unwrap();
+                                self.election_by_user = false;
+                            }
                         }
                     }
                     if let Ok(mut leader_busy) = mutex.lock() {
@@ -121,33 +133,18 @@ impl LeaderProcessor {
         match message {
             // Un proceso de pid menor quiere ser lider
             LeaderMessage::LeaderElectionRequest { .. } => {
-                self.election_in_progress = true;
-                // Viene desde un comando de usuario
-                if peer_id == 0 {
-                    let message = LeaderMessage::LeaderElectionRequest {
-                        timestamp: SystemTime::now(),
-                    };
-                    println!("Soy 0 por la consola {:?}", message);
-                    self.peer_handler_sender
-                        .send(ClientEvent::LeaderEvent { message, peer_id });
-                } else {
-                    let message = LeaderMessage::OkMessage;
-                    println!("Mando a peer {:?}", message);
-                    self.peer_handler_sender
-                        .send(ClientEvent::LeaderEvent { message, peer_id });
-                    let message = LeaderMessage::LeaderElectionRequest {
-                        timestamp: SystemTime::now(),
-                    };
-                    println!("Mando LE");
-                    self.peer_handler_sender
-                        .send(ClientEvent::LeaderEvent { message, peer_id });
-                };
+                self.run_election(message, peer_id);
             }
             // Alguien de pid mayor me dijo "Ok", así que espero el victory
             LeaderMessage::OkMessage => self.waiting_coordinator = true,
             // Alguien de pid mayor salió lider electo democráticamente, todos amamos al lider
             LeaderMessage::VictoryMessage {} => {
-                println!("new leader: {}", peer_id);
+                println!("new leader: {}, initiated by me: {}", peer_id, self.election_by_user);
+                if self.election_by_user {
+                    println!("destrabando");
+                    self.output_sender.send(ClientMessage::LeaderElectionFinished).unwrap();
+                    self.election_by_user = false;
+                }
                 self.current_leader = peer_id;
                 self.waiting_coordinator = false;
             }
@@ -155,7 +152,37 @@ impl LeaderProcessor {
                 println!("Current leader: {}", self.current_leader);
                 response_sender.send(self.current_leader).unwrap();
             }
+            LeaderMessage::PeerDisconnected => {
+                if peer_id == self.current_leader {
+                    self.run_election(message, peer_id);
+                }
+            }
         }
+    }
+
+    fn run_election(&mut self, message: LeaderMessage, peer_id: PeerIdType) {
+        self.election_in_progress = true;
+        // Viene desde un comando de usuario
+        println!("Election by {}", peer_id);
+        if peer_id == 0 {
+            let message = LeaderMessage::LeaderElectionRequest {
+                timestamp: SystemTime::now(),
+            };
+            self.election_by_user = true;
+            self.peer_handler_sender
+                .send(ClientEvent::LeaderEvent { message, peer_id });
+        } else {
+            let message = LeaderMessage::OkMessage;
+            println!("Mando a peer {:?}", message);
+            self.peer_handler_sender
+                .send(ClientEvent::LeaderEvent { message, peer_id });
+            let message = LeaderMessage::LeaderElectionRequest {
+                timestamp: SystemTime::now(),
+            };
+            println!("Mando LE");
+            self.peer_handler_sender
+                .send(ClientEvent::LeaderEvent { message, peer_id });
+        };
     }
 }
 

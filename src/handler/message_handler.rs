@@ -20,6 +20,7 @@ impl MessageHandler {
         peer_sender: Sender<ClientEvent>,
         leader_notify: Arc<(Mutex<bool>, Condvar)>,
         leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
+        output_sender: Sender<ClientMessage>
     ) -> Self {
         let thread_handle = Some(thread::spawn(move || {
             MessageHandler::run(
@@ -28,6 +29,7 @@ impl MessageHandler {
                 peer_sender,
                 leader_notify,
                 leader_handler_sender,
+                output_sender
             )
             .unwrap();
         }));
@@ -40,8 +42,9 @@ impl MessageHandler {
         peer_sender: Sender<ClientEvent>,
         leader_notify: Arc<(Mutex<bool>, Condvar)>,
         leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
+        output_sender: Sender<ClientMessage>,
     ) -> io::Result<()> {
-        let mut processor = MessageProcessor::new(own_id, leader_handler_sender);
+        let mut processor = MessageProcessor::new(own_id, leader_handler_sender, output_sender);
         for (message, peer_id) in message_receiver {
             let (mutex, cv) = &*leader_notify;
             if let Ok(leader_lock) = mutex.lock() {
@@ -73,18 +76,21 @@ struct MessageProcessor {
     lock: CentralizedLock,
     blockchain: Blockchain,
     leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
+    output_sender: Sender<ClientMessage>,
 }
 
 impl MessageProcessor {
     pub fn new(
         own_id: PeerIdType,
         leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
+        output_sender: Sender<ClientMessage>,
     ) -> Self {
         MessageProcessor {
             id: own_id,
             lock: CentralizedLock::new(),
             blockchain: Blockchain::new(),
             leader_handler_sender,
+            output_sender
         }
     }
 
@@ -97,22 +103,18 @@ impl MessageProcessor {
         match message {
             ClientMessage::ReadBlockchainRequest {} => {
                 if !self.lock.is_owned_by(peer_id) {
-                    return Some(ClientMessage::ErrorResponse {
-                        msg: ErrorMessage::LockNotAcquiredError,
-                    });
+                    return Some(ClientMessage::ErrorResponse(ErrorMessage::LockNotAcquiredError));
                 }
                 if self.is_leader() {
                     Some(ClientMessage::ReadBlockchainResponse {
                         blockchain: self.blockchain.clone(),
                     })
                 } else {
-                    Some(ClientMessage::ErrorResponse {
-                        msg: ErrorMessage::NotLeaderError,
-                    })
+                    Some(ClientMessage::ErrorResponse(ErrorMessage::NotLeaderError))
                 }
             }
-            ClientMessage::ReadBlockchainResponse { blockchain } => {
-                println!("Blockchain: {}", blockchain);
+            ClientMessage::ReadBlockchainResponse { .. } => {
+                self.output_sender.send(message);
                 None
             }
             ClientMessage::WriteBlockchainRequest { transaction } => {
@@ -125,7 +127,7 @@ impl MessageProcessor {
                 Some(ClientMessage::WriteBlockchainResponse {})
             }
             ClientMessage::WriteBlockchainResponse {} => {
-                println!("Write success!");
+                self.output_sender.send(message);
                 None
             }
 
@@ -134,17 +136,19 @@ impl MessageProcessor {
                     let acquired = self.lock.acquire(peer_id) == LockResult::Acquired;
                     Some(ClientMessage::LockResponse { acquired })
                 } else {
-                    Some(ClientMessage::ErrorResponse {
-                        msg: ErrorMessage::NotLeaderError,
-                    })
+                    Some(ClientMessage::ErrorResponse(ErrorMessage::NotLeaderError))
                 }
             }
-            ClientMessage::LockResponse { acquired } => {
-                println!("Lock acquired: {:?}", acquired);
+            ClientMessage::LockResponse { .. } => {
+                self.output_sender.send(message);
                 None
             }
-            ClientMessage::ErrorResponse { msg } => {
-                println!("Error! {:?}", msg);
+            ClientMessage::ErrorResponse (..) => {
+                self.output_sender.send(message);
+                None
+            }
+            ClientMessage::LeaderElectionFinished { } => {
+                self.output_sender.send(message);
                 None
             }
         }
