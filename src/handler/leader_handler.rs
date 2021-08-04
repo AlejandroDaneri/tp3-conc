@@ -108,17 +108,16 @@ impl LeaderProcessor {
     fn process_message(&mut self, message: LeaderMessage, peer_id: PeerIdType) {
         match message {
             LeaderMessage::LeaderElectionRequest {
-                request_id,
                 timestamp,
             } => {
+                println!("Leader election: {}", peer_id);
                 self.election_in_progress = true;
-                if request_id < self.own_id {
+                if peer_id < self.own_id {
                     let message = LeaderMessage::LeaderElectionRequest {
-                        request_id,
                         timestamp,
                     };
                     self.peer_handler_sender.send(
-                        ClientEvent::LeaderEvent { message, peer_id: self.own_id},
+                        ClientEvent::LeaderEvent { message, peer_id },
                     );
                 }
             }
@@ -126,6 +125,7 @@ impl LeaderProcessor {
                 response_sender.send(self.current_leader).unwrap();
             }
             LeaderMessage::VictoryMessage { } => {
+                println!("Victory from: {}", peer_id);
                 self.current_leader = peer_id
             }
             LeaderMessage::OkMessage => self.waiting_coordinator = true,

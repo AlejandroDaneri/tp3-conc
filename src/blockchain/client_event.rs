@@ -19,7 +19,7 @@ pub enum ClientEvent {
         peer_id: PeerIdType,
     },
     UserInput {
-        message: ClientMessage,
+        message: Message,
     },
     LeaderEvent {
         message: LeaderMessage,
@@ -29,12 +29,23 @@ pub enum ClientEvent {
 impl ClientEvent {
     pub fn serialize(&self) -> String {
         match self {
-            ClientEvent::UserInput { message } => message.serialize(),
-            ClientEvent::LeaderEvent { message, peer_id} => message.serialize(),
+            ClientEvent::UserInput { message } => {
+                match message {
+                    Message::Common(message) => {message.serialize()}
+                    Message::Leader(message) => {message.serialize()}
+                }
+            },
+            ClientEvent::LeaderEvent { message, peer_id: _} => message.serialize(),
             _ => unreachable!(),
         }
     }
 }
+
+#[derive(Clone, Debug)]
+pub enum Message {
+    Common(ClientMessage), Leader(LeaderMessage)
+}
+
 #[derive(Clone, Debug)]
 pub enum ClientMessage {
     ReadBlockchainRequest {},
@@ -86,7 +97,7 @@ impl ClientMessage {
         }
     }
 
-    pub fn deserialize(line: String) -> Option<ClientMessage> {
+    pub fn deserialize(line: &String) -> Option<ClientMessage> {
         let mut tokens = line.split_whitespace();
         let action = tokens.next();
         match action {
@@ -147,18 +158,23 @@ impl<R: Read> ClientEventReader<R> {
 }
 
 impl<R: Read> Iterator for ClientEventReader<R> {
-    type Item = ClientMessage;
+    type Item = Message;
     fn next(&mut self) -> Option<<Self as Iterator>::Item> {
         let mut line = String::new();
         self.reader.read_line(&mut line).ok()?;
-        ClientMessage::deserialize(line)
+        if let Some(message) = ClientMessage::deserialize(&line) {
+            Some(Message::Common(message))
+        } else {
+            let message = LeaderMessage::deserialize(&line)?;
+            Some(Message::Leader(message))
+        }
+
     }
 }
 
 #[derive(Clone, Debug)]
 pub enum LeaderMessage {
     LeaderElectionRequest {
-        request_id: PeerIdType,
         timestamp: SystemTime,
     },
     CurrentLeaderLocal {
@@ -171,11 +187,10 @@ impl LeaderMessage {
     pub fn serialize(&self) -> String {
         match self {
             LeaderMessage::LeaderElectionRequest {
-                request_id,
                 timestamp,
             } => {
                 let time_epoch = timestamp.duration_since(std::time::UNIX_EPOCH).unwrap();
-                format!("le {} {}", request_id, time_epoch.as_secs())
+                format!("le {}", time_epoch.as_secs())
             }
             LeaderMessage::CurrentLeaderLocal { .. } => {
                 unreachable!()
@@ -188,7 +203,7 @@ impl LeaderMessage {
         }
     }
 
-    pub fn deserialize(line: String) -> Option<LeaderMessage> {
+    pub fn deserialize(line: &String) -> Option<LeaderMessage> {
         let mut tokens = line.split_whitespace();
         let action = tokens.next();
         match action {
@@ -199,10 +214,8 @@ impl LeaderMessage {
     }
 
     fn parse_leader_req(tokens: &mut dyn Iterator<Item = &str>) -> Option<LeaderMessage> {
-        let request_id_str = tokens.next()?;
-        let _timestamp_str = tokens.next()?; //TODO: pasar a timestamp si lo vamos a usar
+        let _timestamp_str = tokens.next(); //TODO: pasar a timestamp si lo vamos a usar
         Some(LeaderMessage::LeaderElectionRequest {
-            request_id: request_id_str.parse::<u32>().ok()?,
             timestamp: SystemTime::now(),
         })
     }

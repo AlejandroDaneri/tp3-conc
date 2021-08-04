@@ -43,7 +43,6 @@ impl PeerProcessor {
                 ClientEvent::PeerMessage { message, peer_id } => {
                     println!("sending message to {}: {:?}", peer_id, message);
                     if let Some(peer) = self.connected_peers.get(&peer_id) {
-                        // if let Some(peer) = connected_peers.get(&peer_id) {
                         let sent = peer.write_message(message);
                         if sent.is_err() {
                             println!("Peer {} disconnected!", peer_id);
@@ -59,22 +58,23 @@ impl PeerProcessor {
                     }
                 }*/
                 ClientEvent::LeaderEvent{message: LeaderElectionRequest {
-                    request_id,
                     timestamp,
                 }, peer_id} => {
                     self.connected_peers
                         .iter()
                         .filter(|(peer_id, peer)| *peer_id > &own_id)
                         .map(|(peer_id, peer)| {
+                            println!("Escribiendo a {}", peer_id);
                             peer.write_message_leader(LeaderMessage::LeaderElectionRequest {
-                                request_id,
                                 timestamp,
                             })
                         });
-                    self.connected_peers
-                        .get(&request_id)
-                        .unwrap()
-                        .write_message_leader(LeaderMessage::OkMessage {});
+                    if peer_id != own_id {
+                        self.connected_peers
+                            .get(&peer_id)
+                            .unwrap()
+                            .write_message_leader(LeaderMessage::OkMessage {});
+                    }
                 }
                 _ => unreachable!(),
             }
@@ -85,8 +85,8 @@ impl PeerProcessor {
 impl PeerHandler {
     pub fn new(
         own_id: PeerIdType,
-        response_sender: Sender<ClientEvent>,
         request_receiver: Receiver<ClientEvent>,
+        response_sender: Sender<ClientEvent>,
         leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
     ) -> Self {
         let hash = HashMap::new();

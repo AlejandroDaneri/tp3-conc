@@ -1,7 +1,7 @@
 use std::io;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
-use crate::blockchain::client_event::{ClientEvent, ClientMessage};
+use crate::blockchain::client_event::{ClientEvent, ClientMessage, Message};
 use crate::blockchain::peer::PeerIdType;
 use crate::handler::connection_handler::ConnectionHandler;
 use crate::handler::input_handler::InputHandler;
@@ -37,8 +37,8 @@ impl Client {
         let (message_handler_sender, message_handler_receiver) = channel();
         let peer_handler = PeerHandler::new(
             self.id,
-            sender.clone(),
             peer_handler_receiver,
+            sender.clone(),
             leader_handler_sender.clone(),
         );
         let leader_notify = Arc::new((Mutex::new(true), Condvar::new()));
@@ -68,7 +68,7 @@ impl Client {
         )?;
 
         drop(connection_handler);
-        // drop(peer_handler); TODO: arreglar move
+        drop(peer_handler);
         drop(input_handler);
         drop(message_handler);
         drop(leader_handler);
@@ -96,10 +96,19 @@ impl Client {
                     })?;
                 }
                 ClientEvent::UserInput { message } => {
+                    match message {
+                        Message::Common(message) => {
+                            message_sender.send((message, 0)).map_err(|_| {
+                                io::Error::new(io::ErrorKind::Other, "message sender error")
+                            })?;
+                        }
+                        Message::Leader(message) => {
+                            leader_sender.send((message, 0)).map_err(|_| {
+                                io::Error::new(io::ErrorKind::Other, "message sender error")
+                            })?;
+                        }
+                    }
                     // TODO ¿Poner un process_input más especializado? ¿Usar otro enum de mensajes?
-                    message_sender.send((message, 0)).map_err(|_| {
-                        io::Error::new(io::ErrorKind::Other, "message sender error")
-                    })?;
                 }
                 ClientEvent::LeaderEvent { message , peer_id} => {
                     //parar todo llego un mensaje lider
