@@ -60,7 +60,7 @@ impl Client {
             peer_handler_sender.clone(),
             leader_notify,
             leader_handler_sender.clone(),
-            output_sender
+            output_sender,
         );
 
         self.dispatch_messages(
