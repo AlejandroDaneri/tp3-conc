@@ -8,6 +8,7 @@ use std::net::TcpStream;
 use std::str::FromStr;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
+use std::time::SystemTime;
 
 #[derive(Debug)]
 pub struct PeerHandler {
@@ -29,6 +30,7 @@ impl PeerProcessor {
         receiver: Receiver<ClientEvent>,
     ) -> io::Result<()> {
         for event in receiver {
+            println!("Event: {:?}", event);
             match event {
                 ClientEvent::Connection { mut stream } => {
                     let peer_pid = PeerHandler::exchange_pids(own_id, &mut stream)?;
@@ -50,33 +52,34 @@ impl PeerProcessor {
                         }
                     }
                 }
-                /*ClientEvent::CoordinatorToAll {} => {
-                    for (_peer_pid, peer) in self.connected_peers.iter() {
-                        peer.write_message_leader(LeaderMessage::CoordinatorMessage {
-                            connection_id: own_id,
-                        });
-                    }
-                }*/
-                ClientEvent::LeaderEvent {
-                    message: LeaderElectionRequest { timestamp },
-                    peer_id,
-                } => {
-                    self.connected_peers
-                        .iter()
-                        .filter(|(peer_id, _peer)| *peer_id > &own_id)
-                        .map(|(peer_id, peer)| {
-                            println!("Escribiendo a {}", peer_id);
-                            peer.write_message_leader(LeaderMessage::LeaderElectionRequest {
-                                timestamp,
-                            })
-                        });
-                    if peer_id != own_id {
+                ClientEvent::LeaderEvent { message, peer_id } => match message {
+                    LeaderMessage::LeaderElectionRequest { .. } => {
                         self.connected_peers
-                            .get(&peer_id)
-                            .unwrap()
-                            .write_message_leader(LeaderMessage::OkMessage {});
+                            .iter()
+                            .filter(|(&peer_id, _)| peer_id > own_id)
+                            .for_each(|(peer_id, peer)| {
+                                println!("Pidiendo ser lider a {}", peer_id);
+                                peer.write_message_leader(LeaderMessage::LeaderElectionRequest {
+                                    timestamp: SystemTime::now(),
+                                });
+                            });
                     }
-                }
+                    LeaderMessage::OkMessage {} => {
+                        if let Some(peer) = self.connected_peers.get(&peer_id) {
+                            let sent = peer.write_message_leader(message);
+                            if sent.is_err() {
+                                println!("Peer {} disconnected!", peer_id);
+                            }
+                        }
+                    }
+                    LeaderMessage::VictoryMessage {} => {
+                        for (peer_id, peer) in self.connected_peers.iter() {
+                            println!("Send victory to {}!", peer_id);
+                            peer.write_message_leader(LeaderMessage::VictoryMessage {});
+                        }
+                    }
+                    _ => unreachable!(),
+                },
                 _ => unreachable!(),
             }
         }

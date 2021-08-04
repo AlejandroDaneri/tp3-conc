@@ -4,7 +4,7 @@ use crate::blockchain::client_event::ClientEvent;
 use crate::blockchain::{client_event::LeaderMessage, peer::PeerIdType};
 
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use std::sync::mpsc::{RecvTimeoutError, Sender};
 
@@ -64,10 +64,12 @@ impl LeaderProcessor {
         }
     }
 
-    fn notify_victory(&self, peer_id: u32) {
+    fn notify_victory(&self) {
         let message = LeaderMessage::VictoryMessage {};
-        self.peer_handler_sender
-            .send(ClientEvent::LeaderEvent { message, peer_id });
+        self.peer_handler_sender.send(ClientEvent::LeaderEvent {
+            message,
+            peer_id: self.own_id,
+        });
     }
     pub fn leader_processor(
         &mut self,
@@ -79,6 +81,7 @@ impl LeaderProcessor {
                 Ok((message, peer_id)) => {
                     let (mutex, cv) = &*leader_election_notify;
                     if let Ok(mut leader_busy) = mutex.lock() {
+                        println!("Leader message from {}: {:?}", peer_id, message);
                         self.process_message(message, peer_id);
                         *leader_busy = true;
                     }
@@ -86,6 +89,15 @@ impl LeaderProcessor {
                 }
                 Err(RecvTimeoutError::Timeout) => {
                     let (mutex, cv) = &*leader_election_notify;
+                    // Si había una elección, se termina
+                    if self.election_in_progress {
+                        self.election_in_progress = false;
+                        // Ningún mayor me dijo Ok
+                        if !self.waiting_coordinator {
+                            self.notify_victory();
+                            self.current_leader = self.own_id;
+                        }
+                    }
                     if let Ok(mut leader_busy) = mutex.lock() {
                         *leader_busy = false;
                     }
@@ -107,23 +119,29 @@ impl LeaderProcessor {
 
     fn process_message(&mut self, message: LeaderMessage, peer_id: PeerIdType) {
         match message {
-            LeaderMessage::LeaderElectionRequest { timestamp } => {
-                println!("Leader election: {}", peer_id);
+            // Un proceso de pid menor quiere ser lider
+            LeaderMessage::LeaderElectionRequest { .. } => {
                 self.election_in_progress = true;
-                if peer_id < self.own_id {
-                    let message = LeaderMessage::LeaderElectionRequest { timestamp };
-                    self.peer_handler_sender
-                        .send(ClientEvent::LeaderEvent { message, peer_id });
-                }
+                // Viene desde un comando de usuario
+                let message = if peer_id == 0 {
+                    LeaderMessage::LeaderElectionRequest { timestamp: SystemTime::now() }
+                } else {
+                    LeaderMessage::OkMessage
+                };
+                println!("Enviando a los peers {:?}", message);
+                self.peer_handler_sender.send(ClientEvent::LeaderEvent { message, peer_id });
             }
+            // Alguien de pid mayor me dijo "Ok", así que espero el victory
+            LeaderMessage::OkMessage => self.waiting_coordinator = true,
+            // Alguien de pid mayor salió lider electo democráticamente, todos amamos al lider
+            LeaderMessage::VictoryMessage {} => {
+                println!("new leader: {}", peer_id);
+                self.current_leader = peer_id
+            },
             LeaderMessage::CurrentLeaderLocal { response_sender } => {
+                println!("Current leader: {}", self.current_leader);
                 response_sender.send(self.current_leader).unwrap();
             }
-            LeaderMessage::VictoryMessage {} => {
-                println!("Victory from: {}", peer_id);
-                self.current_leader = peer_id
-            }
-            LeaderMessage::OkMessage => self.waiting_coordinator = true,
         }
     }
 }

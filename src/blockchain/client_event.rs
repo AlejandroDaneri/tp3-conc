@@ -185,15 +185,15 @@ impl LeaderMessage {
         match self {
             LeaderMessage::LeaderElectionRequest { timestamp } => {
                 let time_epoch = timestamp.duration_since(std::time::UNIX_EPOCH).unwrap();
-                format!("le {}", time_epoch.as_secs())
+                format!("le {}\n", time_epoch.as_secs())
             }
             LeaderMessage::CurrentLeaderLocal { .. } => {
                 unreachable!()
             }
-            LeaderMessage::OkMessage {} => "ok".to_owned(),
+            LeaderMessage::OkMessage {} => "ok\n".to_owned(),
             LeaderMessage::VictoryMessage {} => {
                 // TODO: usar timestamp
-                "coordinator".to_owned()
+                "coordinator\n".to_owned()
             }
         }
     }

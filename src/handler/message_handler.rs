@@ -130,8 +130,14 @@ impl MessageProcessor {
             }
 
             ClientMessage::LockRequest { read_only: _ } => {
-                let acquired = self.lock.acquire(peer_id) == LockResult::Acquired;
-                Some(ClientMessage::LockResponse { acquired })
+                if self.is_leader() {
+                    let acquired = self.lock.acquire(peer_id) == LockResult::Acquired;
+                    Some(ClientMessage::LockResponse { acquired })
+                } else {
+                    Some(ClientMessage::ErrorResponse {
+                        msg: ErrorMessage::NotLeaderError,
+                    })
+                }
             }
             ClientMessage::LockResponse { acquired } => {
                 println!("Lock acquired: {:?}", acquired);
