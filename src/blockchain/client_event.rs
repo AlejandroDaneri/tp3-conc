@@ -19,11 +19,31 @@ pub enum ClientEvent {
         peer_id: PeerIdType,
     },
     UserInput {
-        message: ClientMessage,
+        message: Message,
     },
     LeaderEvent {
         message: LeaderMessage,
+        peer_id: PeerIdType
     },
+}
+impl ClientEvent {
+    pub fn serialize(&self) -> String {
+        match self {
+            ClientEvent::UserInput { message } => {
+                match message {
+                    Message::Common(message) => {message.serialize()}
+                    Message::Leader(message) => {message.serialize()}
+                }
+            },
+            ClientEvent::LeaderEvent { message, peer_id: _} => message.serialize(),
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Message {
+    Common(ClientMessage), Leader(LeaderMessage)
 }
 
 #[derive(Clone, Debug)]
@@ -34,7 +54,6 @@ pub enum ClientMessage {
     WriteBlockchainResponse {},
     LockRequest { read_only: bool },
     LockResponse { acquired: bool },
-    StillAlive {},
     ErrorResponse { msg: ErrorMessage },
 }
 
@@ -69,7 +88,6 @@ impl ClientMessage {
                     "lock failed".to_owned()
                 }
             }
-            ClientMessage::StillAlive {} => "alive".to_owned(),
             ClientMessage::ErrorResponse {
                 msg: ErrorMessage::NotLeaderError,
             } => "error not_leader".to_owned(),
@@ -79,7 +97,7 @@ impl ClientMessage {
         }
     }
 
-    pub fn deserialize(line: String) -> Option<ClientMessage> {
+    pub fn deserialize(line: &String) -> Option<ClientMessage> {
         let mut tokens = line.split_whitespace();
         let action = tokens.next();
         match action {
@@ -140,77 +158,65 @@ impl<R: Read> ClientEventReader<R> {
 }
 
 impl<R: Read> Iterator for ClientEventReader<R> {
-    type Item = ClientMessage;
+    type Item = Message;
     fn next(&mut self) -> Option<<Self as Iterator>::Item> {
         let mut line = String::new();
         self.reader.read_line(&mut line).ok()?;
-        ClientMessage::deserialize(line)
+        if let Some(message) = ClientMessage::deserialize(&line) {
+            Some(Message::Common(message))
+        } else {
+            let message = LeaderMessage::deserialize(&line)?;
+            Some(Message::Leader(message))
+        }
+
     }
 }
 
 #[derive(Clone, Debug)]
 pub enum LeaderMessage {
     LeaderElectionRequest {
-        request_id: PeerIdType,
         timestamp: SystemTime,
     },
     CurrentLeaderLocal {
         response_sender: Sender<PeerIdType>,
     },
     OkMessage,
-    CoordinatorMessage {
-        connection_id: u32,
-    },
-    StillAlive {},
-    TodoMessage {
-        msg: String,
-    },
+    VictoryMessage {}
 }
 impl LeaderMessage {
     pub fn serialize(&self) -> String {
         match self {
             LeaderMessage::LeaderElectionRequest {
-                request_id,
                 timestamp,
             } => {
                 let time_epoch = timestamp.duration_since(std::time::UNIX_EPOCH).unwrap();
-                format!("le {} {}", request_id, time_epoch.as_secs())
+                format!("le {}", time_epoch.as_secs())
             }
             LeaderMessage::CurrentLeaderLocal { .. } => {
                 unreachable!()
             }
             LeaderMessage::OkMessage {} => "ok".to_owned(),
-            LeaderMessage::CoordinatorMessage { connection_id } => {
-                format!("coordinator {}", connection_id)
+            LeaderMessage::VictoryMessage {} => {
+                // TODO: usar timestamp
+                "coordinator".to_owned()
             }
-            LeaderMessage::StillAlive {} => "alive".to_owned(),
-            LeaderMessage::TodoMessage { msg: _ } => todo!(),
         }
     }
 
-    pub fn deserialize(line: String) -> Option<LeaderMessage> {
+    pub fn deserialize(line: &String) -> Option<LeaderMessage> {
         let mut tokens = line.split_whitespace();
         let action = tokens.next();
         match action {
             Some("le") => LeaderMessage::parse_leader_req(&mut tokens),
-            Some("coordinator") => Some(LeaderMessage::parse_coord(&mut tokens)),
+            Some("coordinator") => Some(LeaderMessage::VictoryMessage {}),
             _ => None,
         }
     }
 
     fn parse_leader_req(tokens: &mut dyn Iterator<Item = &str>) -> Option<LeaderMessage> {
-        let request_id_str = tokens.next()?;
-        let _timestamp_str = tokens.next()?; //pasar a timestamp
+        let _timestamp_str = tokens.next(); //TODO: pasar a timestamp si lo vamos a usar
         Some(LeaderMessage::LeaderElectionRequest {
-            request_id: request_id_str.parse::<u32>().ok()?,
             timestamp: SystemTime::now(),
         })
-    }
-
-    fn parse_coord(tokens: &mut dyn Iterator<Item = &str>) -> LeaderMessage {
-        let new_leader_id = tokens.next().unwrap();
-        LeaderMessage::CoordinatorMessage {
-            connection_id: new_leader_id.parse::<u32>().unwrap(),
-        }
     }
 }

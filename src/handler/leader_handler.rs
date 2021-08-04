@@ -1,10 +1,12 @@
+use std::{io, sync::mpsc::Receiver, thread, time::SystemTime};
+
+use crate::blockchain::client_event::ClientEvent;
+use crate::blockchain::{client_event::LeaderMessage, peer::PeerIdType};
+
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
-use std::{io, sync::mpsc::Receiver, thread};
 
-use crate::blockchain::client_event::{ClientMessage, LeaderMessage};
-use crate::blockchain::peer::PeerIdType;
-use std::sync::mpsc::RecvTimeoutError;
+use std::sync::mpsc::{RecvTimeoutError, Sender};
 
 #[derive(Debug)]
 pub struct LeaderHandler {
@@ -14,67 +16,70 @@ pub struct LeaderHandler {
 const LEADER_ELECTION_TIMEOUT: Duration = Duration::from_secs(2);
 
 struct LeaderProcessor {
+    peer_handler_sender: Sender<ClientEvent>,
     current_leader: PeerIdType,
+    own_id: u32,
+    waiting_coordinator: bool,
+    election_in_progress: bool,
 }
 
 impl LeaderHandler {
     pub fn new(
-        leader_receiver: Receiver<LeaderMessage>,
+        leader_receiver: Receiver<(LeaderMessage, PeerIdType)>,
+        peer_handler_sender: Sender<ClientEvent>,
         leader_election_notify: Arc<(Mutex<bool>, Condvar)>,
+        own_id: u32,
     ) -> Self {
         let thread_handle = Some(thread::spawn(move || {
-            LeaderHandler::run(leader_receiver, leader_election_notify).unwrap();
+            LeaderHandler::run(
+                leader_receiver,
+                peer_handler_sender,
+                leader_election_notify,
+                own_id,
+            )
+            .unwrap();
         }));
         LeaderHandler { thread_handle }
     }
 
     fn run(
-        message_receiver: Receiver<LeaderMessage>,
+        message_receiver: Receiver<(LeaderMessage, PeerIdType)>,
+        peer_handler_sender: Sender<ClientEvent>,
         leader_election_notify: Arc<(Mutex<bool>, Condvar)>,
+        own_id: u32,
     ) -> io::Result<()> {
-        let mut processor = LeaderProcessor::new();
-        // for (message, peer_id) in message_receiver {
-        /*if let Some(response) =*/
+        let mut processor = LeaderProcessor::new(peer_handler_sender, own_id);
         processor.leader_processor(message_receiver, leader_election_notify)
-        // peer_sender.send(ClientEvent::LeaderMessage {
-        //     peer_id,
-        //     message: response,
-        // });
-
-        // Ok(())
     }
-    // println!("Saliendo del hilo de mensajes");
-    // Ok(())
 }
 
 impl LeaderProcessor {
-    pub fn new() -> Self {
-        LeaderProcessor { current_leader: 0 }
+    pub fn new(peer_handler_sender: Sender<ClientEvent>, own_id: u32) -> Self {
+        LeaderProcessor {
+            current_leader: 0,
+            peer_handler_sender,
+            own_id,
+            waiting_coordinator: false,
+            election_in_progress: false,
+        }
     }
 
-    fn notify_all(&self, _id: u32) {
-        println!("----notify----");
-        /*
-        Crear un evento que pueda ser enviado al peer_handler
-
-        for (peer_pid, peer) in self.connected_peers.iter() {
-
-            peer.write_message(ClientMessage::CoordinatorMessage {
-                connection_id: self.id,
-            });
-        }*/
+    fn notify_victory(&self, peer_id: u32) {
+        let message = LeaderMessage::VictoryMessage {};
+        self.peer_handler_sender
+            .send(ClientEvent::LeaderEvent {message, peer_id});
     }
     pub fn leader_processor(
         &mut self,
-        receiver: Receiver<LeaderMessage>,
+        receiver: Receiver<(LeaderMessage, PeerIdType)>,
         leader_election_notify: Arc<(Mutex<bool>, Condvar)>,
     ) -> io::Result<()> {
         loop {
             match receiver.recv_timeout(LEADER_ELECTION_TIMEOUT) {
-                Ok(message) => {
+                Ok((message, peer_id)) => {
                     let (mutex, cv) = &*leader_election_notify;
                     if let Ok(mut leader_busy) = mutex.lock() {
-                        self.process_message(message);
+                        self.process_message(message, peer_id);
                         *leader_busy = true;
                     }
                     cv.notify_all();
@@ -87,89 +92,44 @@ impl LeaderProcessor {
                     cv.notify_all();
                 }
                 Err(RecvTimeoutError::Disconnected) => {
-                    let (_, cv) = &*leader_election_notify;
-                    cv.notify_all();
-                    break;
+                    if self.election_in_progress && !self.waiting_coordinator {
+                        // send coordinatortoall
+                        self.election_in_progress = false;
+                        let (_, cv) = &*leader_election_notify;
+                        cv.notify_all();
+                        break;
+                    }
                 }
             }
         }
         Ok(())
     }
 
-    fn process_message(&mut self, message: LeaderMessage) -> io::Result<()> {
+    fn process_message(&mut self, message: LeaderMessage, peer_id: PeerIdType) {
         match message {
             LeaderMessage::LeaderElectionRequest {
-                request_id,
-                timestamp: _,
+                timestamp,
             } => {
-                self.current_leader = request_id;
-                /*
-                //TODO: usar timestamp
-                if request_id > self.id {
-                    return Some(LeaderMessage::TodoMessage {
-                        msg: "Yo no puedo ser lider".to_owned(),
-                    });
+                println!("Leader election: {}", peer_id);
+                self.election_in_progress = true;
+                if peer_id < self.own_id {
+                    let message = LeaderMessage::LeaderElectionRequest {
+                        timestamp,
+                    };
+                    self.peer_handler_sender.send(
+                        ClientEvent::LeaderEvent { message, peer_id },
+                    );
                 }
-                let leader = self.connected_peers.get(&(self.leader)).unwrap();
-                let response = leader.write_message(ClientMessage::StillAlive {});
-                if response.is_ok() {
-                    return Some(ClientMessage::TodoMessage {
-                        msg: format!("el lider sigue siendo: {}", self.leader),
-                    });
-                }
-                //thread::spawn(move || Client::send_leader_request(self, self.id));
-                */
-                // Some(LeaderMessage::TodoMessage {
-                //     msg: "Bully OK".to_owned(),
-                // })
             }
             LeaderMessage::CurrentLeaderLocal { response_sender } => {
                 response_sender.send(self.current_leader).unwrap();
             }
-            LeaderMessage::CoordinatorMessage { connection_id: _ } => todo!(),
-            LeaderMessage::StillAlive {} => todo!(),
-            LeaderMessage::TodoMessage { msg: _ } => todo!(),
-            LeaderMessage::OkMessage => todo!(),
-        }
-        Ok(())
-    }
-
-    fn send_leader_request(&mut self, _id: u32) {
-        println!("MANDE LIDER");
-        /*let mut higher_alive = false;
-        for (peer_pid, peer) in self.connected_peers.iter() {
-            if peer_pid > &(self.id) {
-                println!("hay peer que pueden ser lider");
-                let response = peer.write_message(ClientMessage::LeaderElectionRequest {
-                    request_id: self.id,
-                    timestamp: SystemTime::now(),
-                });
-                if response.is_ok() {
-                    higher_alive = true
-                }
+            LeaderMessage::VictoryMessage { } => {
+                println!("Victory from: {}", peer_id);
+                self.current_leader = peer_id
             }
+            LeaderMessage::OkMessage => self.waiting_coordinator = true,
         }
-
-        if higher_alive {
-            println!("NO SOY NUEVO LIDER");
-            return;
-        }
-        self.leader = self.id;
-        println!("SOY NUEVO LIDER");
-        self.notify_minions(self.id);
-        */
-    }
-
-    fn send_request_to_leader(&self, _message: ClientMessage) -> io::Result<()> {
-        /*if let Some(leader_peer) = self.connected_peers.get(&self.leader) {
-            leader_peer.write_message(message)
-        } else {
-            Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Request sent to none leader",
-            ))
-        }*/
-        unimplemented!()
     }
 }
 

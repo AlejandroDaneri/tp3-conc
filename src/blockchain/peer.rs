@@ -3,8 +3,9 @@ use std::io::Write;
 use std::net::TcpStream;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
-use super::client_event::{ClientEvent, ClientEventReader, ClientMessage};
+use super::client_event::{ClientEvent, ClientEventReader, ClientMessage, LeaderMessage};
 use std::thread;
+use crate::blockchain::client_event::Message;
 
 pub type PeerIdType = u32;
 
@@ -13,7 +14,7 @@ pub struct Peer {
     id: PeerIdType,
     recv_thread: Option<thread::JoinHandle<()>>,
     send_thread: Option<thread::JoinHandle<()>>,
-    sender: Option<Sender<ClientMessage>>,
+    sender: Option<Sender<ClientEvent>>,
 }
 
 impl Peer {
@@ -43,7 +44,16 @@ impl Peer {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let message_reader = ClientEventReader::new(stream);
         for message in message_reader {
-            sender.send(ClientEvent::PeerMessage { message, peer_id })?;
+            let event;
+            match message {
+                Message::Common(message) => {
+                    event = ClientEvent::PeerMessage { message, peer_id };
+                }
+                Message::Leader(message) => {
+                    event = ClientEvent::LeaderEvent { message, peer_id };
+                }
+            }
+            sender.send(event)?;
         }
         println!("No more events!");
         sender.send(ClientEvent::PeerDisconnected { peer_id })?;
@@ -52,7 +62,7 @@ impl Peer {
 
     fn send_messages(
         mut stream: TcpStream,
-        receiver: Receiver<ClientMessage>,
+        receiver: Receiver<ClientEvent>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         for event in receiver {
             let buf = event.serialize();
@@ -62,10 +72,24 @@ impl Peer {
     }
 
     pub fn write_message(&self, msg: ClientMessage) -> io::Result<()> {
+        let msg = Message::Common(msg);
         match &self.sender {
-            Some(sender) => sender.send(msg).map_err(|_| {
-                io::Error::new(io::ErrorKind::Other, "Error while sending message to peer")
-            }),
+            Some(sender) => sender
+                .send(ClientEvent::UserInput { message: msg })
+                .map_err(|_| {
+                    io::Error::new(io::ErrorKind::Other, "Error while sending message to peer")
+                }),
+            None => unreachable!(),
+        }
+    }
+
+    pub fn write_message_leader(&self, msg: LeaderMessage) -> io::Result<()> {
+        match &self.sender {
+            Some(sender) => sender
+                .send(ClientEvent::LeaderEvent { message: msg, peer_id: self.id })
+                .map_err(|_| {
+                    io::Error::new(io::ErrorKind::Other, "Error while sending message to peer")
+                }),
             None => unreachable!(),
         }
     }

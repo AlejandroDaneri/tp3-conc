@@ -19,7 +19,7 @@ impl MessageHandler {
         message_receiver: Receiver<(ClientMessage, PeerIdType)>,
         peer_sender: Sender<ClientEvent>,
         leader_notify: Arc<(Mutex<bool>, Condvar)>,
-        leader_handler_sender: Sender<LeaderMessage>,
+        leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
     ) -> Self {
         let thread_handle = Some(thread::spawn(move || {
             MessageHandler::run(
@@ -39,7 +39,7 @@ impl MessageHandler {
         message_receiver: Receiver<(ClientMessage, PeerIdType)>,
         peer_sender: Sender<ClientEvent>,
         leader_notify: Arc<(Mutex<bool>, Condvar)>,
-        leader_handler_sender: Sender<LeaderMessage>,
+        leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
     ) -> io::Result<()> {
         let mut processor = MessageProcessor::new(own_id, leader_handler_sender);
         for (message, peer_id) in message_receiver {
@@ -72,11 +72,11 @@ struct MessageProcessor {
     id: PeerIdType,
     lock: CentralizedLock,
     blockchain: Blockchain,
-    leader_handler_sender: Sender<LeaderMessage>,
+    leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
 }
 
 impl MessageProcessor {
-    pub fn new(own_id: PeerIdType, leader_handler_sender: Sender<LeaderMessage>) -> Self {
+    pub fn new(own_id: PeerIdType, leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>) -> Self {
         MessageProcessor {
             id: own_id,
             lock: CentralizedLock::new(),
@@ -138,7 +138,6 @@ impl MessageProcessor {
                 println!("Error! {:?}", msg);
                 None
             }
-            ClientMessage::StillAlive {} => None,
         }
     }
 
@@ -149,7 +148,7 @@ impl MessageProcessor {
     fn retrieve_leader(&self) -> PeerIdType {
         let (response_sender, response_receiver) = channel();
         let message = LeaderMessage::CurrentLeaderLocal { response_sender };
-        self.leader_handler_sender.send(message).unwrap();
+        self.leader_handler_sender.send((message, 0)).unwrap();
         response_receiver.recv().unwrap()
     }
 }
