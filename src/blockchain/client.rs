@@ -99,13 +99,17 @@ impl Client {
                     match message {
                         Message::Common(message) => {
                             let leader_id = Client::retrieve_leader(&leader_sender);
-                            let event = ClientEvent::PeerMessage {
-                                message,
-                                peer_id: leader_id,
-                            };
-                            peer_sender.send(event).map_err(|_| {
-                                io::Error::new(io::ErrorKind::Other, "message sender error")
-                            })?;
+                            if leader_id != self.id {
+                                let event = ClientEvent::PeerMessage {
+                                    message,
+                                    peer_id: leader_id,
+                                };
+                                peer_sender.send(event).map_err(|_| {
+                                    io::Error::new(io::ErrorKind::Other, "message sender error")
+                                })?;
+                            } else {
+                                message_sender.send((message, self.id));
+                            }
                         }
                         Message::Leader(message) => {
                             leader_sender.send((message, 0)).map_err(|_| {

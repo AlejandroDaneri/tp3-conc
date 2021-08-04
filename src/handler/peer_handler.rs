@@ -52,19 +52,21 @@ impl PeerProcessor {
                             }
                         }
                         None => {
-                            println!("Peer {} disconnected!", peer_id);
-                            // lo mismo que handleo de LeaderMessage::LeaderElectionRequest
-                            self.connected_peers
-                                .iter()
-                                .filter(|(&peer_idd, _)| peer_idd > own_id)
-                                .for_each(|(peer_idd, peer)| {
-                                    println!("Pidiendo ser lider a {}", peer_idd);
-                                    peer.write_message_leader(
-                                        LeaderMessage::LeaderElectionRequest {
-                                            timestamp: SystemTime::now(),
-                                        },
-                                    );
-                                });
+                            if peer_id != own_id {
+                                println!("Peer {} disconnected!", peer_id);
+                                // lo mismo que handleo de LeaderMessage::LeaderElectionRequest
+                                self.connected_peers
+                                    .iter()
+                                    .filter(|(&peer_idd, _)| peer_idd > own_id)
+                                    .for_each(|(peer_idd, peer)| {
+                                        println!("Pidiendo ser lider a {}", peer_idd);
+                                        peer.write_message_leader(
+                                            LeaderMessage::LeaderElectionRequest {
+                                                timestamp: SystemTime::now(),
+                                            },
+                                        );
+                                    });
+                            }
                             // TODO: el mensaje que fallo no se reenvia
                         }
                     }
