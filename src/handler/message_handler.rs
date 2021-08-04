@@ -20,7 +20,7 @@ impl MessageHandler {
         peer_sender: Sender<ClientEvent>,
         leader_notify: Arc<(Mutex<bool>, Condvar)>,
         leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
-        output_sender: Sender<ClientMessage>
+        output_sender: Sender<ClientMessage>,
     ) -> Self {
         let thread_handle = Some(thread::spawn(move || {
             MessageHandler::run(
@@ -29,7 +29,7 @@ impl MessageHandler {
                 peer_sender,
                 leader_notify,
                 leader_handler_sender,
-                output_sender
+                output_sender,
             )
             .unwrap();
         }));
@@ -90,7 +90,7 @@ impl MessageProcessor {
             lock: CentralizedLock::new(),
             blockchain: Blockchain::new(),
             leader_handler_sender,
-            output_sender
+            output_sender,
         }
     }
 
@@ -103,7 +103,9 @@ impl MessageProcessor {
         match message {
             ClientMessage::ReadBlockchainRequest {} => {
                 if !self.lock.is_owned_by(peer_id) {
-                    return Some(ClientMessage::ErrorResponse(ErrorMessage::LockNotAcquiredError));
+                    return Some(ClientMessage::ErrorResponse(
+                        ErrorMessage::LockNotAcquiredError,
+                    ));
                 }
                 if self.is_leader() {
                     Some(ClientMessage::ReadBlockchainResponse {
@@ -143,11 +145,11 @@ impl MessageProcessor {
                 self.output_sender.send(message);
                 None
             }
-            ClientMessage::ErrorResponse (..) => {
+            ClientMessage::ErrorResponse(..) => {
                 self.output_sender.send(message);
                 None
             }
-            ClientMessage::LeaderElectionFinished { } => {
+            ClientMessage::LeaderElectionFinished {} => {
                 self.output_sender.send(message);
                 None
             }

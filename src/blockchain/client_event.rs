@@ -91,9 +91,13 @@ impl ClientMessage {
                     "lock failed\n".to_owned()
                 }
             }
-            ClientMessage::ErrorResponse (ErrorMessage::NotLeaderError) => "error not_leader\n".to_owned(),
-            ClientMessage::ErrorResponse (ErrorMessage::LockNotAcquiredError) => "error not_locked\n".to_owned(),
-            ClientMessage::LeaderElectionFinished {} => "info leader_election_finished".to_owned()
+            ClientMessage::ErrorResponse(ErrorMessage::NotLeaderError) => {
+                "error not_leader\n".to_owned()
+            }
+            ClientMessage::ErrorResponse(ErrorMessage::LockNotAcquiredError) => {
+                "error not_locked\n".to_owned()
+            }
+            ClientMessage::LeaderElectionFinished {} => "info leader_election_finished".to_owned(),
         }
     }
 
@@ -136,8 +140,10 @@ impl ClientMessage {
     fn parse_error(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
         let error_str = tokens.next()?;
         match error_str {
-            "not_leader" => Some(ClientMessage::ErrorResponse (ErrorMessage::NotLeaderError)),
-            "not_locked" => Some(ClientMessage::ErrorResponse (ErrorMessage::LockNotAcquiredError)),
+            "not_leader" => Some(ClientMessage::ErrorResponse(ErrorMessage::NotLeaderError)),
+            "not_locked" => Some(ClientMessage::ErrorResponse(
+                ErrorMessage::LockNotAcquiredError,
+            )),
             _ => None,
         }
     }
@@ -175,7 +181,7 @@ pub enum LeaderMessage {
     CurrentLeaderLocal { response_sender: Sender<PeerIdType> },
     OkMessage,
     VictoryMessage {},
-    PeerDisconnected
+    PeerDisconnected,
 }
 impl LeaderMessage {
     pub fn serialize(&self) -> String {
@@ -192,7 +198,7 @@ impl LeaderMessage {
                 // TODO: usar timestamp
                 "coordinator\n".to_owned()
             }
-            LeaderMessage::PeerDisconnected => unreachable!()
+            LeaderMessage::PeerDisconnected => unreachable!(),
         }
     }
 

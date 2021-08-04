@@ -22,7 +22,7 @@ struct LeaderProcessor {
     own_id: u32,
     waiting_coordinator: bool,
     election_in_progress: bool,
-    election_by_user: bool
+    election_by_user: bool,
 }
 
 impl LeaderHandler {
@@ -59,7 +59,11 @@ impl LeaderHandler {
 }
 
 impl LeaderProcessor {
-    pub fn new(own_id: u32, peer_handler_sender: Sender<ClientEvent>, output_sender: Sender<ClientMessage>) -> Self {
+    pub fn new(
+        own_id: u32,
+        peer_handler_sender: Sender<ClientEvent>,
+        output_sender: Sender<ClientMessage>,
+    ) -> Self {
         LeaderProcessor {
             current_leader: 0,
             peer_handler_sender,
@@ -67,7 +71,7 @@ impl LeaderProcessor {
             own_id,
             waiting_coordinator: false,
             election_in_progress: false,
-            election_by_user: false
+            election_by_user: false,
         }
     }
 
@@ -105,7 +109,9 @@ impl LeaderProcessor {
                             self.current_leader = self.own_id;
                             if self.election_by_user {
                                 println!("destrabando");
-                                self.output_sender.send(ClientMessage::LeaderElectionFinished).unwrap();
+                                self.output_sender
+                                    .send(ClientMessage::LeaderElectionFinished)
+                                    .unwrap();
                                 self.election_by_user = false;
                             }
                         }
@@ -139,10 +145,15 @@ impl LeaderProcessor {
             LeaderMessage::OkMessage => self.waiting_coordinator = true,
             // Alguien de pid mayor salió lider electo democráticamente, todos amamos al lider
             LeaderMessage::VictoryMessage {} => {
-                println!("new leader: {}, initiated by me: {}", peer_id, self.election_by_user);
+                println!(
+                    "new leader: {}, initiated by me: {}",
+                    peer_id, self.election_by_user
+                );
                 if self.election_by_user {
                     println!("destrabando");
-                    self.output_sender.send(ClientMessage::LeaderElectionFinished).unwrap();
+                    self.output_sender
+                        .send(ClientMessage::LeaderElectionFinished)
+                        .unwrap();
                     self.election_by_user = false;
                 }
                 self.current_leader = peer_id;
@@ -160,7 +171,7 @@ impl LeaderProcessor {
         }
     }
 
-    fn run_election(&mut self, message: LeaderMessage, peer_id: PeerIdType) {
+    fn run_election(&mut self, _message: LeaderMessage, peer_id: PeerIdType) {
         self.election_in_progress = true;
         // Viene desde un comando de usuario
         println!("Election by {}", peer_id);

@@ -27,7 +27,7 @@ impl PeerProcessor {
         own_id: u32,
         sender: Sender<ClientEvent>,
         receiver: Receiver<ClientEvent>,
-        leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>
+        leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
     ) -> io::Result<()> {
         for event in receiver {
             println!("PH: Processing event: {:?}", event);

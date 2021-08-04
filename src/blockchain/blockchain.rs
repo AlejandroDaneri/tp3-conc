@@ -283,7 +283,8 @@ mod tests {
 
     #[test]
     fn parse_blockchain() {
-        let blockchain_str = "blockchain insert pedro 10 0 123 insert juan 2 123 345 end_blockchain";
+        let blockchain_str =
+            "blockchain insert pedro 10 0 123 insert juan 2 123 345 end_blockchain";
         let mut tokens = blockchain_str.split_whitespace().skip(1);
         let blockchain = Blockchain::parse(&mut tokens);
         assert!(blockchain.is_some());
