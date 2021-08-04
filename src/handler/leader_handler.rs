@@ -1,4 +1,4 @@
-use std::{io, sync::mpsc::Receiver, thread, time::SystemTime};
+use std::{io, sync::mpsc::Receiver, thread};
 
 use crate::blockchain::client_event::ClientEvent;
 use crate::blockchain::{client_event::LeaderMessage, peer::PeerIdType};
@@ -67,7 +67,7 @@ impl LeaderProcessor {
     fn notify_victory(&self, peer_id: u32) {
         let message = LeaderMessage::VictoryMessage {};
         self.peer_handler_sender
-            .send(ClientEvent::LeaderEvent {message, peer_id});
+            .send(ClientEvent::LeaderEvent { message, peer_id });
     }
     pub fn leader_processor(
         &mut self,
@@ -107,24 +107,19 @@ impl LeaderProcessor {
 
     fn process_message(&mut self, message: LeaderMessage, peer_id: PeerIdType) {
         match message {
-            LeaderMessage::LeaderElectionRequest {
-                timestamp,
-            } => {
+            LeaderMessage::LeaderElectionRequest { timestamp } => {
                 println!("Leader election: {}", peer_id);
                 self.election_in_progress = true;
                 if peer_id < self.own_id {
-                    let message = LeaderMessage::LeaderElectionRequest {
-                        timestamp,
-                    };
-                    self.peer_handler_sender.send(
-                        ClientEvent::LeaderEvent { message, peer_id },
-                    );
+                    let message = LeaderMessage::LeaderElectionRequest { timestamp };
+                    self.peer_handler_sender
+                        .send(ClientEvent::LeaderEvent { message, peer_id });
                 }
             }
             LeaderMessage::CurrentLeaderLocal { response_sender } => {
                 response_sender.send(self.current_leader).unwrap();
             }
-            LeaderMessage::VictoryMessage { } => {
+            LeaderMessage::VictoryMessage {} => {
                 println!("Victory from: {}", peer_id);
                 self.current_leader = peer_id
             }

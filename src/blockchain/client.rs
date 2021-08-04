@@ -110,7 +110,7 @@ impl Client {
                     }
                     // TODO ¿Poner un process_input más especializado? ¿Usar otro enum de mensajes?
                 }
-                ClientEvent::LeaderEvent { message , peer_id} => {
+                ClientEvent::LeaderEvent { message, peer_id } => {
                     //parar todo llego un mensaje lider
                     leader_sender
                         .send((message, peer_id))

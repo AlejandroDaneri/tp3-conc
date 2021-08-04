@@ -4,8 +4,8 @@ use std::net::TcpStream;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 use super::client_event::{ClientEvent, ClientEventReader, ClientMessage, LeaderMessage};
-use std::thread;
 use crate::blockchain::client_event::Message;
+use std::thread;
 
 pub type PeerIdType = u32;
 
@@ -86,7 +86,10 @@ impl Peer {
     pub fn write_message_leader(&self, msg: LeaderMessage) -> io::Result<()> {
         match &self.sender {
             Some(sender) => sender
-                .send(ClientEvent::LeaderEvent { message: msg, peer_id: self.id })
+                .send(ClientEvent::LeaderEvent {
+                    message: msg,
+                    peer_id: self.id,
+                })
                 .map_err(|_| {
                     io::Error::new(io::ErrorKind::Other, "Error while sending message to peer")
                 }),

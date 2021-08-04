@@ -23,19 +23,20 @@ pub enum ClientEvent {
     },
     LeaderEvent {
         message: LeaderMessage,
-        peer_id: PeerIdType
+        peer_id: PeerIdType,
     },
 }
 impl ClientEvent {
     pub fn serialize(&self) -> String {
         match self {
-            ClientEvent::UserInput { message } => {
-                match message {
-                    Message::Common(message) => {message.serialize()}
-                    Message::Leader(message) => {message.serialize()}
-                }
+            ClientEvent::UserInput { message } => match message {
+                Message::Common(message) => message.serialize(),
+                Message::Leader(message) => message.serialize(),
             },
-            ClientEvent::LeaderEvent { message, peer_id: _} => message.serialize(),
+            ClientEvent::LeaderEvent {
+                message,
+                peer_id: _,
+            } => message.serialize(),
             _ => unreachable!(),
         }
     }
@@ -43,7 +44,8 @@ impl ClientEvent {
 
 #[derive(Clone, Debug)]
 pub enum Message {
-    Common(ClientMessage), Leader(LeaderMessage)
+    Common(ClientMessage),
+    Leader(LeaderMessage),
 }
 
 #[derive(Clone, Debug)]
@@ -168,27 +170,20 @@ impl<R: Read> Iterator for ClientEventReader<R> {
             let message = LeaderMessage::deserialize(&line)?;
             Some(Message::Leader(message))
         }
-
     }
 }
 
 #[derive(Clone, Debug)]
 pub enum LeaderMessage {
-    LeaderElectionRequest {
-        timestamp: SystemTime,
-    },
-    CurrentLeaderLocal {
-        response_sender: Sender<PeerIdType>,
-    },
+    LeaderElectionRequest { timestamp: SystemTime },
+    CurrentLeaderLocal { response_sender: Sender<PeerIdType> },
     OkMessage,
-    VictoryMessage {}
+    VictoryMessage {},
 }
 impl LeaderMessage {
     pub fn serialize(&self) -> String {
         match self {
-            LeaderMessage::LeaderElectionRequest {
-                timestamp,
-            } => {
+            LeaderMessage::LeaderElectionRequest { timestamp } => {
                 let time_epoch = timestamp.duration_since(std::time::UNIX_EPOCH).unwrap();
                 format!("le {}", time_epoch.as_secs())
             }

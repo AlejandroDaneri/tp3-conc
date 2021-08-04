@@ -76,7 +76,10 @@ struct MessageProcessor {
 }
 
 impl MessageProcessor {
-    pub fn new(own_id: PeerIdType, leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>) -> Self {
+    pub fn new(
+        own_id: PeerIdType,
+        leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
+    ) -> Self {
         MessageProcessor {
             id: own_id,
             lock: CentralizedLock::new(),

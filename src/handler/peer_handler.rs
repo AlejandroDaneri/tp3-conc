@@ -1,3 +1,4 @@
+use crate::blockchain::client_event::LeaderMessage::LeaderElectionRequest;
 use crate::blockchain::client_event::{ClientEvent, LeaderMessage};
 use crate::blockchain::peer::{Peer, PeerIdType};
 use std::collections::HashMap;
@@ -7,7 +8,6 @@ use std::net::TcpStream;
 use std::str::FromStr;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
-use crate::blockchain::client_event::LeaderMessage::LeaderElectionRequest;
 
 #[derive(Debug)]
 pub struct PeerHandler {
@@ -57,12 +57,13 @@ impl PeerProcessor {
                         });
                     }
                 }*/
-                ClientEvent::LeaderEvent{message: LeaderElectionRequest {
-                    timestamp,
-                }, peer_id} => {
+                ClientEvent::LeaderEvent {
+                    message: LeaderElectionRequest { timestamp },
+                    peer_id,
+                } => {
                     self.connected_peers
                         .iter()
-                        .filter(|(peer_id, peer)| *peer_id > &own_id)
+                        .filter(|(peer_id, _peer)| *peer_id > &own_id)
                         .map(|(peer_id, peer)| {
                             println!("Escribiendo a {}", peer_id);
                             peer.write_message_leader(LeaderMessage::LeaderElectionRequest {
