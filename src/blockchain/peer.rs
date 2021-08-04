@@ -84,6 +84,7 @@ impl Peer {
     }
 
     pub fn write_message_leader(&self, msg: LeaderMessage) -> io::Result<()> {
+        println!("WRITE {:?}", msg);
         match &self.sender {
             Some(sender) => sender
                 .send(ClientEvent::LeaderEvent {

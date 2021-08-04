@@ -1,4 +1,3 @@
-use crate::blockchain::client_event::LeaderMessage::LeaderElectionRequest;
 use crate::blockchain::client_event::{ClientEvent, LeaderMessage};
 use crate::blockchain::peer::{Peer, PeerIdType};
 use std::collections::HashMap;
@@ -44,11 +43,29 @@ impl PeerProcessor {
                 }
                 ClientEvent::PeerMessage { message, peer_id } => {
                     println!("sending message to {}: {:?}", peer_id, message);
-                    if let Some(peer) = self.connected_peers.get(&peer_id) {
-                        let sent = peer.write_message(message);
-                        if sent.is_err() {
+                    match self.connected_peers.get(&peer_id) {
+                        Some(peer) => {
+                            let sent = peer.write_message(message);
+                            if sent.is_err() {
+                                println!("Peer {} disconnected!", peer_id);
+                                // TODO: leader election leader_handler_sender.send(LeaderMessage::PeerDisconnected...)
+                            }
+                        }
+                        None => {
                             println!("Peer {} disconnected!", peer_id);
-                            // TODO: leader election leader_handler_sender.send(LeaderMessage::PeerDisconnected...)
+                            // lo mismo que handleo de LeaderMessage::LeaderElectionRequest
+                            self.connected_peers
+                                .iter()
+                                .filter(|(&peer_idd, _)| peer_idd > own_id)
+                                .for_each(|(peer_idd, peer)| {
+                                    println!("Pidiendo ser lider a {}", peer_idd);
+                                    peer.write_message_leader(
+                                        LeaderMessage::LeaderElectionRequest {
+                                            timestamp: SystemTime::now(),
+                                        },
+                                    );
+                                });
+                            // TODO: el mensaje que fallo no se reenvia
                         }
                     }
                 }

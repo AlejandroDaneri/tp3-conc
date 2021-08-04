@@ -75,7 +75,7 @@ impl ClientMessage {
             ClientMessage::WriteBlockchainRequest { transaction } => {
                 format!("wb {}\n", transaction.serialize())
             }
-            ClientMessage::WriteBlockchainResponse {} => "wb_response".to_owned(),
+            ClientMessage::WriteBlockchainResponse {} => "wb_response\n".to_owned(),
             ClientMessage::LockRequest { read_only } => {
                 if *read_only {
                     "lock read\n".to_owned()
