@@ -68,34 +68,34 @@ pub enum ErrorMessage {
 impl ClientMessage {
     pub fn serialize(&self) -> String {
         match self {
-            ClientMessage::ReadBlockchainRequest {} => "rb".to_owned(),
+            ClientMessage::ReadBlockchainRequest {} => "rb\n".to_owned(),
             ClientMessage::ReadBlockchainResponse { blockchain } => {
-                format!("blockchain {}", blockchain.serialize())
+                format!("blockchain {}\n", blockchain.serialize())
             }
             ClientMessage::WriteBlockchainRequest { transaction } => {
-                format!("wb {}", transaction.serialize())
+                format!("wb {}\n", transaction.serialize())
             }
             ClientMessage::WriteBlockchainResponse {} => "wb_response".to_owned(),
             ClientMessage::LockRequest { read_only } => {
                 if *read_only {
-                    "lock read".to_owned()
+                    "lock read\n".to_owned()
                 } else {
-                    "lock write".to_owned()
+                    "lock write\n".to_owned()
                 }
             }
             ClientMessage::LockResponse { acquired } => {
                 if *acquired {
-                    "lock acquired".to_owned()
+                    "lock acquired\n".to_owned()
                 } else {
-                    "lock failed".to_owned()
+                    "lock failed\n".to_owned()
                 }
             }
             ClientMessage::ErrorResponse {
                 msg: ErrorMessage::NotLeaderError,
-            } => "error not_leader".to_owned(),
+            } => "error not_leader\n".to_owned(),
             ClientMessage::ErrorResponse {
                 msg: ErrorMessage::LockNotAcquiredError,
-            } => "error not_locked".to_owned(),
+            } => "error not_locked\n".to_owned(),
         }
     }
 

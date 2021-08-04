@@ -50,7 +50,7 @@ impl Client {
         );
 
         let connection_handler = ConnectionHandler::new(sender.clone(), port_from, port_to);
-        let input_handler = InputHandler::new(source, sender.clone());
+        let input_handler = InputHandler::new(source, sender);
 
         let message_handler = MessageHandler::new(
             self.id,
@@ -99,7 +99,10 @@ impl Client {
                     match message {
                         Message::Common(message) => {
                             let leader_id = Client::retrieve_leader(&leader_sender);
-                            let event = ClientEvent::PeerMessage{ message, peer_id: leader_id };
+                            let event = ClientEvent::PeerMessage {
+                                message,
+                                peer_id: leader_id,
+                            };
                             peer_sender.send(event).map_err(|_| {
                                 io::Error::new(io::ErrorKind::Other, "message sender error")
                             })?;

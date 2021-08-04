@@ -138,7 +138,7 @@ impl LeaderProcessor {
                     let message = LeaderMessage::LeaderElectionRequest {
                         timestamp: SystemTime::now(),
                     };
-                    println!("Mando a LE a {:?}", peer_id);
+                    println!("Mando a LE");
                     self.peer_handler_sender
                         .send(ClientEvent::LeaderEvent { message, peer_id });
                 };
