@@ -159,7 +159,10 @@ impl MessageProcessor {
                 self.output_sender.send(message);
                 None
             }
-            ClientMessage::BroadcastBlockchain { blockchain: _ } => todo!(),
+            ClientMessage::BroadcastBlockchain { blockchain } => {
+                self.blockchain = blockchain;
+                None
+            }
         }
     }
 

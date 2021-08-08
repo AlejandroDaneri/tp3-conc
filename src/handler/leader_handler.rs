@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime};
 
 use std::sync::mpsc::{RecvTimeoutError, Sender};
 
-use super::peer_handler;
+
 
 #[derive(Debug)]
 pub struct LeaderHandler {

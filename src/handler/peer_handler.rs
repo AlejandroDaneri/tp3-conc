@@ -1,12 +1,12 @@
-use crate::blockchain::client_event::{ClientEvent, LeaderMessage, Message};
+use crate::blockchain::client_event::{ClientEvent, ClientMessage, LeaderMessage, Message};
 use crate::blockchain::peer::{Peer, PeerIdType};
-use crate::handler::leader_handler;
+
 use std::collections::HashMap;
 use std::io;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::str::FromStr;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::SystemTime;
 
@@ -76,10 +76,19 @@ impl PeerProcessor {
                         self.leader_handler_sender.send((message, peer_id));
                     }
                 }
-                None => {
-                    let message = LeaderMessage::PeerDisconnected;
-                    self.leader_handler_sender.send((message, peer_id));
-                }
+                None => match message {
+                    ClientMessage::BroadcastBlockchain { blockchain } => {
+                        for (_pid, peer) in self.connected_peers.iter() {
+                            peer.write_message(ClientMessage::ReadBlockchainResponse {
+                                blockchain: blockchain.clone(),
+                            });
+                        }
+                    }
+                    _ => {
+                        let message = LeaderMessage::PeerDisconnected;
+                        self.leader_handler_sender.send((message, peer_id));
+                    }
+                },
             },
             Message::Leader(message) => match message {
                 LeaderMessage::LeaderElectionRequest { .. } => {

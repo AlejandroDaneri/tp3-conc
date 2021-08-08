@@ -208,7 +208,7 @@ impl LeaderMessage {
             }
             LeaderMessage::PeerDisconnected => unreachable!(),
             LeaderMessage::SendLeaderId => unreachable!(),
-            LeaderMessage::BroadcastBlockchain { blockchain } => unreachable!(),
+            LeaderMessage::BroadcastBlockchain { blockchain: _ } => unreachable!(),
         }
     }
 
