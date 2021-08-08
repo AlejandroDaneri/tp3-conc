@@ -177,6 +177,12 @@ impl LeaderProcessor {
                     });
                 }
             }
+            LeaderMessage::BroadcastBlockchain { blockchain } => {
+                self.peer_handler_sender.send(ClientEvent::PeerMessage {
+                    peer_id: self.own_id,
+                    message: Message::Common(ClientMessage::BroadcastBlockchain { blockchain }),
+                });
+            }
         }
     }
 

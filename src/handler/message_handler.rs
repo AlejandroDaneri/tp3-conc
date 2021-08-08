@@ -105,18 +105,9 @@ impl MessageProcessor {
         println!("process_message: {:?}", message);
         match message {
             ClientMessage::ReadBlockchainRequest {} => {
-                if !self.lock.is_owned_by(peer_id) {
-                    return Some(ClientMessage::ErrorResponse(
-                        ErrorMessage::LockNotAcquiredError,
-                    ));
-                }
-                if self.is_leader() {
-                    Some(ClientMessage::ReadBlockchainResponse {
-                        blockchain: self.blockchain.clone(),
-                    })
-                } else {
-                    Some(ClientMessage::ErrorResponse(ErrorMessage::NotLeaderError))
-                }
+                Some(ClientMessage::ReadBlockchainResponse {
+                    blockchain: self.blockchain.clone(),
+                })
             }
             ClientMessage::ReadBlockchainResponse { blockchain } => {
                 self.blockchain = blockchain;
@@ -124,13 +115,24 @@ impl MessageProcessor {
                 None
             }
             ClientMessage::WriteBlockchainRequest { transaction } => {
-                if self.is_leader() {
-                    {
-                        let _valid = self.blockchain.validate(&transaction); //esto deberia ser la transaccion que recibe cuando devuelve el lock
-                        self.blockchain.add_transaction(transaction);
-                    }
+                if !self.lock.is_owned_by(peer_id) {
+                    return Some(ClientMessage::ErrorResponse(
+                        ErrorMessage::LockNotAcquiredError,
+                    ));
                 }
-                Some(ClientMessage::WriteBlockchainResponse {})
+                if self.is_leader() {
+                    let _valid = self.blockchain.validate(&transaction); //esto deberia ser la transaccion que recibe cuando devuelve el lock
+                    self.blockchain.add_transaction(transaction);
+                    self.leader_handler_sender.send((
+                        LeaderMessage::BroadcastBlockchain {
+                            blockchain: self.blockchain.clone(),
+                        },
+                        self.id,
+                    ));
+                    Some(ClientMessage::WriteBlockchainResponse {})
+                } else {
+                    Some(ClientMessage::ErrorResponse(ErrorMessage::NotLeaderError))
+                }
             }
             ClientMessage::WriteBlockchainResponse {} => {
                 self.output_sender.send(message);
@@ -157,6 +159,7 @@ impl MessageProcessor {
                 self.output_sender.send(message);
                 None
             }
+            ClientMessage::BroadcastBlockchain { blockchain: _ } => todo!(),
         }
     }
 
