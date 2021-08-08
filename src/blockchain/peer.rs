@@ -2,10 +2,11 @@ use std::io;
 use std::io::Write;
 use std::net::TcpStream;
 use std::sync::mpsc::{channel, Receiver, Sender};
-
-use super::client_event::{ClientEvent, ClientEventReader, ClientMessage, LeaderMessage};
-use crate::blockchain::client_event::Message;
 use std::thread;
+
+use crate::communication::client_event::Message;
+use crate::communication::client_event::{ClientEvent, ClientMessage, LeaderMessage};
+use crate::communication::serialization::LineReader;
 
 pub type PeerIdType = u32;
 
@@ -42,7 +43,7 @@ impl Peer {
         stream: TcpStream,
         sender: Sender<ClientEvent>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let message_reader = ClientEventReader::new(stream);
+        let message_reader = LineReader::new(stream);
         for message in message_reader {
             let event = ClientEvent::PeerMessage { message, peer_id };
             sender.send(event)?;

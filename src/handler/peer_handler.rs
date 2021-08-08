@@ -1,5 +1,6 @@
-use crate::blockchain::client_event::{ClientEvent, LeaderMessage, Message};
 use crate::blockchain::peer::{Peer, PeerIdType};
+use crate::communication::client_event::{ClientEvent, LeaderMessage, Message};
+use crate::communication::serialization::Serializable;
 use crate::handler::leader_handler;
 use std::collections::HashMap;
 use std::io;

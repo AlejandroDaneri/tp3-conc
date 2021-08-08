@@ -1,12 +1,12 @@
 use std::io;
+use std::io::Read;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 
-use crate::blockchain::client_event::Message::Common;
-use crate::blockchain::client_event::{
-    ClientEvent, ClientEventReader, ClientMessage, ErrorMessage,
-};
-use std::io::Read;
+use crate::communication::client_event::Message;
+use crate::communication::client_event::{ClientEvent, ClientMessage, ErrorMessage};
+use crate::communication::commands::UserCommand;
+use crate::communication::serialization::LineReader;
 
 #[derive(Debug)]
 pub struct InputHandler {
@@ -14,70 +14,108 @@ pub struct InputHandler {
 }
 
 impl InputHandler {
-    pub fn new<T: 'static + Read + Send>(
-        source: T,
+    pub fn new<R: 'static + Read + Send>(
+        source: R,
         input_sender: Sender<ClientEvent>,
         output_receiver: Receiver<ClientMessage>,
     ) -> Self {
         let thread_handle = Some(thread::spawn(move || {
-            InputHandler::run(source, input_sender, output_receiver).unwrap();
+            InputHandler::run(source, input_sender, output_receiver);
         }));
         InputHandler { thread_handle }
     }
 
-    fn run<T: Read>(
-        source: T,
-        input_sender: Sender<ClientEvent>,
+    fn run<R: 'static + Read + Send>(
+        source: R,
+        message_sender: Sender<ClientEvent>,
         output_receiver: Receiver<ClientMessage>,
-    ) -> io::Result<()> {
-        let message_reader = ClientEventReader::new(source);
-        for message in message_reader {
-            let event = ClientEvent::UserInput {
-                message: message.clone(),
-            };
-            input_sender.send(event).unwrap();
-            println!("Waiting response...");
-            let response = output_receiver.recv().unwrap();
-            println!("Response: {:?}", response);
-            match response {
-                ClientMessage::ErrorResponse(ErrorMessage::LockNotAcquiredError) => {
-                    let mut lock_acquired = false;
-                    while !lock_acquired {
-                        let lock_msg = ClientMessage::LockRequest { read_only: true };
-                        println!("Asking lock...");
-                        input_sender.send(ClientEvent::UserInput {
-                            message: Common(lock_msg),
-                        });
-                        let response = output_receiver.recv().unwrap();
-                        println!("Response: {:?}", response);
-                        if let ClientMessage::LockResponse { acquired } = response {
-                            lock_acquired = acquired;
-                        }
-                    }
-                    let event = ClientEvent::UserInput { message };
-                    input_sender.send(event);
-                    let response = output_receiver.recv().unwrap();
-                    println!("Response: {:?}", response);
-                }
-                ClientMessage::ErrorResponse(ErrorMessage::NotLeaderError) => {
-                    println!(
-                        "TODO: Ocurrió {:?}, realizar un leader request automático.",
-                        response
-                    )
-                }
-                ClientMessage::ReadBlockchainResponse { blockchain } => {
-                    println!("Blockchain: {}", blockchain);
-                }
-                _ => println!("{:?}", response),
-            }
-        }
-        println!("Saliendo de la aplicación");
-        Ok(())
+    ) {
+        let processor = InputProcessor::new(message_sender, output_receiver);
+        processor.run(source).unwrap();
     }
 }
 
 impl Drop for InputHandler {
     fn drop(&mut self) {
         let _ = self.thread_handle.take().unwrap().join();
+    }
+}
+
+pub struct InputProcessor {
+    message_sender: Sender<ClientEvent>,
+    output_receiver: Receiver<ClientMessage>,
+}
+
+impl InputProcessor {
+    pub fn new(
+        message_sender: Sender<ClientEvent>,
+        output_receiver: Receiver<ClientMessage>,
+    ) -> Self {
+        InputProcessor {
+            message_sender,
+            output_receiver,
+        }
+    }
+
+    fn run<R: Read>(&self, source: R) -> io::Result<()> {
+        let command_reader = LineReader::<R, UserCommand>::new(source);
+        for command in command_reader {
+            self.handle_command(&command);
+        }
+        println!("Saliendo de la aplicación");
+        Ok(())
+    }
+
+    fn handle_command(&self, command: &UserCommand) {
+        let message;
+        match command {
+            UserCommand::ReadBlockchain => {
+                message = Message::Common(ClientMessage::ReadBlockchainRequest)
+            }
+            UserCommand::WriteBlockchain(transaction) => {
+                message = Message::Common(ClientMessage::WriteBlockchainRequest {
+                    transaction: transaction.clone(),
+                })
+            }
+            _ => {
+                return;
+            }
+        }
+        let event = ClientEvent::UserInput {
+            message: message.clone(),
+        };
+        self.message_sender.send(event);
+        let mut response;
+        loop {
+            println!("Waiting response...");
+            response = self.output_receiver.recv().unwrap();
+            match response {
+                ClientMessage::ErrorResponse(ErrorMessage::LockNotAcquiredError) => {
+                    let event = ClientEvent::UserInput {
+                        message: Message::Common(ClientMessage::LockRequest),
+                    };
+                    self.message_sender.send(event);
+                }
+                ClientMessage::LockResponse { acquired: true } => {
+                    println!("Lock acquired! retrying... ");
+                    let event = ClientEvent::UserInput {
+                        message: message.clone(),
+                    };
+                    self.message_sender.send(event);
+                }
+                ClientMessage::ReadBlockchainResponse { .. }
+                | ClientMessage::WriteBlockchainResponse { .. } => {
+                    break;
+                }
+                _ => {
+                    let event = ClientEvent::UserInput {
+                        message: message.clone(),
+                    };
+                    self.message_sender.send(event);
+                    println!("Retrying after {:?}", response);
+                }
+            }
+        }
+        println!("Response: {:?}", response);
     }
 }

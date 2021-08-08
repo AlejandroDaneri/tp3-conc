@@ -2,7 +2,7 @@ use std::io;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::mpsc::Sender;
 
-use crate::blockchain::client_event::ClientEvent;
+use crate::communication::client_event::ClientEvent;
 use std::thread;
 
 #[derive(Debug)]
