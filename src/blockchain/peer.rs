@@ -44,15 +44,7 @@ impl Peer {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let message_reader = ClientEventReader::new(stream);
         for message in message_reader {
-            let event;
-            match message {
-                Message::Common(message) => {
-                    event = ClientEvent::PeerMessage { message, peer_id };
-                }
-                Message::Leader(message) => {
-                    event = ClientEvent::LeaderEvent { message, peer_id };
-                }
-            }
+            let event = ClientEvent::PeerMessage { message, peer_id };
             sender.send(event)?;
         }
         println!("No more events from {}", peer_id);
@@ -86,8 +78,8 @@ impl Peer {
     pub fn write_message_leader(&self, msg: LeaderMessage) -> io::Result<()> {
         match &self.sender {
             Some(sender) => sender
-                .send(ClientEvent::LeaderEvent {
-                    message: msg,
+                .send(ClientEvent::PeerMessage {
+                    message: Message::Leader(msg),
                     peer_id: self.id,
                 })
                 .map_err(|_| {

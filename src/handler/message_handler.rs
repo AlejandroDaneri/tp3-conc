@@ -3,7 +3,9 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 
 use crate::blockchain::blockchain::Blockchain;
-use crate::blockchain::client_event::{ClientEvent, ClientMessage, ErrorMessage, LeaderMessage};
+use crate::blockchain::client_event::{
+    ClientEvent, ClientMessage, ErrorMessage, LeaderMessage, Message,
+};
 use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
 use crate::blockchain::peer::PeerIdType;
 use std::thread;
@@ -55,8 +57,8 @@ impl MessageHandler {
             if let Some(response) = processor.process_message(message, peer_id) {
                 peer_sender
                     .send(ClientEvent::PeerMessage {
+                        message: Message::Common(response),
                         peer_id,
-                        message: response,
                     })
                     .map_err(|_| {
                         io::Error::new(

@@ -1,6 +1,6 @@
 use std::{io, sync::mpsc::Receiver, thread};
 
-use crate::blockchain::client_event::{ClientEvent, ClientMessage};
+use crate::blockchain::client_event::{ClientEvent, ClientMessage, Message};
 use crate::blockchain::{client_event::LeaderMessage, peer::PeerIdType};
 
 use std::sync::{Arc, Condvar, Mutex};
@@ -76,8 +76,8 @@ impl LeaderProcessor {
     }
 
     fn notify_victory(&self) {
-        let message = LeaderMessage::VictoryMessage {};
-        self.peer_handler_sender.send(ClientEvent::LeaderEvent {
+        let message = Message::Leader(LeaderMessage::VictoryMessage);
+        self.peer_handler_sender.send(ClientEvent::PeerMessage {
             message,
             peer_id: self.own_id,
         });
@@ -176,23 +176,23 @@ impl LeaderProcessor {
         // Viene desde un comando de usuario
         println!("Election by {}", peer_id);
         if peer_id == 0 {
-            let message = LeaderMessage::LeaderElectionRequest {
+            let message = Message::Leader(LeaderMessage::LeaderElectionRequest {
                 timestamp: SystemTime::now(),
-            };
+            });
             self.election_by_user = true;
             self.peer_handler_sender
-                .send(ClientEvent::LeaderEvent { message, peer_id });
+                .send(ClientEvent::PeerMessage { message, peer_id });
         } else {
-            let message = LeaderMessage::OkMessage;
+            let message = Message::Leader(LeaderMessage::OkMessage);
             println!("Mando a peer {:?}", message);
             self.peer_handler_sender
-                .send(ClientEvent::LeaderEvent { message, peer_id });
-            let message = LeaderMessage::LeaderElectionRequest {
+                .send(ClientEvent::PeerMessage { message, peer_id });
+            let message = Message::Leader(LeaderMessage::LeaderElectionRequest {
                 timestamp: SystemTime::now(),
-            };
+            });
             println!("Mando LE");
             self.peer_handler_sender
-                .send(ClientEvent::LeaderEvent { message, peer_id });
+                .send(ClientEvent::PeerMessage { message, peer_id });
         };
     }
 }

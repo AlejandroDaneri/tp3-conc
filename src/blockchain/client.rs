@@ -93,41 +93,41 @@ impl Client {
                         .send(event)
                         .map_err(|_| io::Error::new(io::ErrorKind::Other, "peer sender error"))?;
                 }
-                ClientEvent::PeerMessage { message, peer_id } => {
-                    message_sender.send((message, peer_id)).map_err(|_| {
-                        io::Error::new(io::ErrorKind::Other, "message sender error")
-                    })?;
-                }
-                ClientEvent::UserInput { message } => {
-                    match message {
-                        Message::Common(message) => {
-                            let leader_id = Client::retrieve_leader(&leader_sender);
-                            if leader_id != self.id {
-                                let event = ClientEvent::PeerMessage {
-                                    message,
-                                    peer_id: leader_id,
-                                };
-                                peer_sender.send(event).map_err(|_| {
-                                    io::Error::new(io::ErrorKind::Other, "message sender error")
-                                })?;
-                            } else {
-                                message_sender.send((message, self.id));
-                            }
-                        }
-                        Message::Leader(message) => {
-                            leader_sender.send((message, 0)).map_err(|_| {
+                ClientEvent::PeerMessage { message, peer_id } => match message {
+                    Message::Common(message) => {
+                        message_sender.send((message, peer_id)).map_err(|_| {
+                            io::Error::new(io::ErrorKind::Other, "message sender error")
+                        })?;
+                    }
+                    Message::Leader(message) => {
+                        leader_sender.send((message, peer_id)).map_err(|_| {
+                            io::Error::new(io::ErrorKind::Other, "leader sender error")
+                        })?;
+                    }
+                },
+                ClientEvent::UserInput { message } => match &message {
+                    Message::Common(inner) => {
+                        let leader_id = Client::retrieve_leader(&leader_sender);
+                        if leader_id != self.id {
+                            let event = ClientEvent::PeerMessage {
+                                message,
+                                peer_id: leader_id,
+                            };
+                            peer_sender.send(event).map_err(|_| {
+                                io::Error::new(io::ErrorKind::Other, "message sender error")
+                            })?;
+                        } else {
+                            message_sender.send((inner.clone(), self.id)).map_err(|_| {
                                 io::Error::new(io::ErrorKind::Other, "message sender error")
                             })?;
                         }
                     }
-                    // TODO ¿Poner un process_input más especializado? ¿Usar otro enum de mensajes?
-                }
-                ClientEvent::LeaderEvent { message, peer_id } => {
-                    //parar todo llego un mensaje lider
-                    leader_sender
-                        .send((message, peer_id))
-                        .map_err(|_| io::Error::new(io::ErrorKind::Other, "leader sender error"))?;
-                }
+                    Message::Leader(message) => {
+                        leader_sender.send((message.clone(), 0)).map_err(|_| {
+                            io::Error::new(io::ErrorKind::Other, "leader sender error")
+                        })?;
+                    }
+                },
             }
         }
         Ok(())

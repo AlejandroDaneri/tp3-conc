@@ -12,7 +12,7 @@ pub enum ClientEvent {
         stream: TcpStream,
     },
     PeerMessage {
-        message: ClientMessage,
+        message: Message,
         peer_id: PeerIdType,
     },
     PeerDisconnected {
@@ -21,19 +21,12 @@ pub enum ClientEvent {
     UserInput {
         message: Message,
     },
-    LeaderEvent {
-        message: LeaderMessage,
-        peer_id: PeerIdType,
-    },
 }
 impl ClientEvent {
     pub fn serialize(&self) -> String {
         match self {
-            ClientEvent::UserInput { message } => match message {
-                Message::Common(message) => message.serialize(),
-                Message::Leader(message) => message.serialize(),
-            },
-            ClientEvent::LeaderEvent {
+            ClientEvent::UserInput { message } => message.serialize(),
+            ClientEvent::PeerMessage {
                 message,
                 peer_id: _,
             } => message.serialize(),
@@ -46,6 +39,15 @@ impl ClientEvent {
 pub enum Message {
     Common(ClientMessage),
     Leader(LeaderMessage),
+}
+
+impl Message {
+    pub fn serialize(&self) -> String {
+        match self {
+            Message::Common(message) => message.serialize(),
+            Message::Leader(message) => message.serialize(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -101,7 +103,7 @@ impl ClientMessage {
         }
     }
 
-    pub fn deserialize(line: &String) -> Option<ClientMessage> {
+    pub fn deserialize(line: &str) -> Option<ClientMessage> {
         let mut tokens = line.split_whitespace();
         let action = tokens.next();
         match action {
@@ -180,7 +182,7 @@ pub enum LeaderMessage {
     LeaderElectionRequest { timestamp: SystemTime },
     CurrentLeaderLocal { response_sender: Sender<PeerIdType> },
     OkMessage,
-    VictoryMessage {},
+    VictoryMessage,
     PeerDisconnected,
 }
 impl LeaderMessage {
@@ -202,7 +204,7 @@ impl LeaderMessage {
         }
     }
 
-    pub fn deserialize(line: &String) -> Option<LeaderMessage> {
+    pub fn deserialize(line: &str) -> Option<LeaderMessage> {
         let mut tokens = line.split_whitespace();
         let action = tokens.next();
         match action {

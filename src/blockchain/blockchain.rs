@@ -178,14 +178,10 @@ impl Blockchain {
 
     pub fn parse(tokens: &mut dyn Iterator<Item = &str>) -> Option<Self> {
         let mut blockchain = Blockchain::new();
-        loop {
-            if let Some(transaction) = Transaction::parse(tokens) {
-                let previous_hash = tokens.next()?;
-                let block = Block::new(transaction, previous_hash.parse::<u64>().ok()?).ok()?;
-                blockchain.add_block(block);
-            } else {
-                break;
-            }
+        while let Some(transaction) = Transaction::parse(tokens) {
+            let previous_hash = tokens.next()?;
+            let block = Block::new(transaction, previous_hash.parse::<u64>().ok()?).ok()?;
+            blockchain.add_block(block);
         }
         Some(blockchain)
     }

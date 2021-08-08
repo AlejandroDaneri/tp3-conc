@@ -65,7 +65,7 @@ impl InputHandler {
                         response
                     )
                 }
-                ClientMessage::ReadBlockchainResponse {blockchain} => {
+                ClientMessage::ReadBlockchainResponse { blockchain } => {
                     println!("Blockchain: {}", blockchain);
                 }
                 _ => println!("{:?}", response),

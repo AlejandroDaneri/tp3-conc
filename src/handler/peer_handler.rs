@@ -1,4 +1,4 @@
-use crate::blockchain::client_event::{ClientEvent, LeaderMessage};
+use crate::blockchain::client_event::{ClientEvent, LeaderMessage, Message};
 use crate::blockchain::peer::{Peer, PeerIdType};
 use std::collections::HashMap;
 use std::io;
@@ -12,86 +12,101 @@ use std::time::SystemTime;
 #[derive(Debug)]
 pub struct PeerHandler {
     thread_handle: Option<thread::JoinHandle<io::Result<()>>>,
-    pub own_id: u32,
 }
+
 pub struct PeerProcessor {
     connected_peers: HashMap<u32, Peer>,
+    own_id: PeerIdType,
+    sender: Sender<ClientEvent>,
+    receiver: Receiver<ClientEvent>,
+    leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
 }
 
 impl PeerProcessor {
-    pub fn new(connected_peers: HashMap<u32, Peer>) -> Self {
-        Self { connected_peers }
-    }
-    pub fn process(
-        &mut self,
-        own_id: u32,
+    pub fn new(
+        connected_peers: HashMap<u32, Peer>,
+        own_id: PeerIdType,
         sender: Sender<ClientEvent>,
         receiver: Receiver<ClientEvent>,
         leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
-    ) -> io::Result<()> {
-        for event in receiver {
+    ) -> Self {
+        Self {
+            connected_peers,
+            own_id,
+            sender,
+            receiver,
+            leader_handler_sender,
+        }
+    }
+    pub fn process(&mut self) -> io::Result<()> {
+        for event in self.receiver.iter() {
             println!("PH: Processing event: {:?}", event);
             match event {
                 ClientEvent::Connection { mut stream } => {
-                    let peer_pid = PeerHandler::exchange_pids(own_id, &mut stream)?;
-                    let peer = Peer::new(peer_pid, stream, sender.clone());
+                    let peer_pid = PeerHandler::exchange_pids(self.own_id, &mut stream)?;
+                    let peer = Peer::new(peer_pid, stream, self.sender.clone());
                     self.connected_peers.insert(peer_pid, peer);
                 }
                 ClientEvent::PeerDisconnected { peer_id } => {
                     self.connected_peers.remove(&peer_id);
                     println!("Peer {} removed", peer_id);
                     let message = LeaderMessage::PeerDisconnected;
-                    leader_handler_sender.send((message, peer_id));
+                    self.leader_handler_sender.send((message, peer_id));
                 }
                 ClientEvent::PeerMessage { message, peer_id } => {
-                    println!("sending message to {}: {:?}", peer_id, message);
-                    match self.connected_peers.get(&peer_id) {
-                        Some(peer) => {
-                            let sent = peer.write_message(message);
-                            if sent.is_err() {
-                                println!("Peer {} disconnected!", peer_id);
-                                let message = LeaderMessage::PeerDisconnected;
-                                leader_handler_sender.send((message, peer_id));
-                            }
-                        }
-                        None => {
-                            let message = LeaderMessage::PeerDisconnected;
-                            leader_handler_sender.send((message, peer_id));
-                        }
-                    }
+                    self.handle_peer_message(message, peer_id);
                 }
-                ClientEvent::LeaderEvent { message, peer_id } => match message {
-                    LeaderMessage::LeaderElectionRequest { .. } => {
-                        self.connected_peers
-                            .iter()
-                            .filter(|(&peer_id, _)| peer_id > own_id)
-                            .for_each(|(peer_id, peer)| {
-                                println!("Pidiendo ser lider a {}", peer_id);
-                                peer.write_message_leader(LeaderMessage::LeaderElectionRequest {
-                                    timestamp: SystemTime::now(),
-                                });
-                            });
-                    }
-                    LeaderMessage::OkMessage {} => {
-                        if let Some(peer) = self.connected_peers.get(&peer_id) {
-                            let sent = peer.write_message_leader(message);
-                            if sent.is_err() {
-                                println!("Peer {} disconnected!", peer_id);
-                            }
-                        }
-                    }
-                    LeaderMessage::VictoryMessage {} => {
-                        for (peer_id, peer) in self.connected_peers.iter() {
-                            println!("Send victory to {}!", peer_id);
-                            peer.write_message_leader(LeaderMessage::VictoryMessage {});
-                        }
-                    }
-                    _ => unreachable!(),
-                },
-                _ => unreachable!(),
+                ClientEvent::UserInput { .. } => unreachable!(),
             }
         }
         Ok(())
+    }
+
+    fn handle_peer_message(&self, message: Message, peer_id: PeerIdType) {
+        match message {
+            Message::Common(message) => match self.connected_peers.get(&peer_id) {
+                Some(peer) => {
+                    let sent = peer.write_message(message);
+                    if sent.is_err() {
+                        println!("Peer {} disconnected!", peer_id);
+                        let message = LeaderMessage::PeerDisconnected;
+                        self.leader_handler_sender.send((message, peer_id));
+                    }
+                }
+                None => {
+                    let message = LeaderMessage::PeerDisconnected;
+                    self.leader_handler_sender.send((message, peer_id));
+                }
+            },
+            Message::Leader(message) => match message {
+                LeaderMessage::LeaderElectionRequest { .. } => {
+                    self.connected_peers
+                        .iter()
+                        .filter(|(&peer_id, _)| peer_id > self.own_id)
+                        .for_each(|(peer_id, peer)| {
+                            println!("Pidiendo ser lider a {}", peer_id);
+                            peer.write_message_leader(LeaderMessage::LeaderElectionRequest {
+                                timestamp: SystemTime::now(),
+                            });
+                        });
+                }
+                LeaderMessage::OkMessage {} => {
+                    if let Some(peer) = self.connected_peers.get(&peer_id) {
+                        let sent = peer.write_message_leader(message);
+                        if sent.is_err() {
+                            println!("Peer {} disconnected!", peer_id);
+                        }
+                    }
+                }
+                LeaderMessage::VictoryMessage {} => {
+                    for (peer_id, peer) in self.connected_peers.iter() {
+                        println!("Send victory to {}!", peer_id);
+                        peer.write_message_leader(LeaderMessage::VictoryMessage {});
+                    }
+                }
+                _ => unreachable!(),
+            },
+        }
     }
 }
 impl PeerHandler {
@@ -113,7 +128,6 @@ impl PeerHandler {
         });
         PeerHandler {
             thread_handle: Some(thread_handle),
-            own_id,
         }
     }
 
@@ -122,10 +136,16 @@ impl PeerHandler {
         receiver: Receiver<ClientEvent>,
         sender: Sender<ClientEvent>,
         leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
-        hash: HashMap<u32, Peer>,
+        connected_peers: HashMap<u32, Peer>,
     ) -> io::Result<()> {
-        let mut processor = PeerProcessor::new(hash);
-        processor.process(own_id, sender, receiver, leader_handler_sender)
+        let mut processor = PeerProcessor::new(
+            connected_peers,
+            own_id,
+            sender,
+            receiver,
+            leader_handler_sender,
+        );
+        processor.process()
     }
 
     fn exchange_pids(own_id: PeerIdType, stream: &mut TcpStream) -> io::Result<u32> {
