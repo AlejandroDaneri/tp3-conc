@@ -161,11 +161,6 @@ impl PeerHandler {
         u32::from_str(&client_pid)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "bad client pid"))
     }
-
-    fn send_actual_leader(stream: &mut TcpStream) {
-        let victory_msg = "coordinator\n".to_owned();
-        stream.write_all(victory_msg.as_bytes());
-    }
 }
 
 impl Drop for PeerHandler {
