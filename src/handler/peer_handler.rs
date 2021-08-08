@@ -1,11 +1,12 @@
 use crate::blockchain::client_event::{ClientEvent, LeaderMessage, Message};
 use crate::blockchain::peer::{Peer, PeerIdType};
+use crate::handler::leader_handler;
 use std::collections::HashMap;
 use std::io;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::str::FromStr;
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use std::time::SystemTime;
 
@@ -44,6 +45,8 @@ impl PeerProcessor {
             match event {
                 ClientEvent::Connection { mut stream } => {
                     let peer_pid = PeerHandler::exchange_pids(self.own_id, &mut stream)?;
+                    self.leader_handler_sender
+                        .send((LeaderMessage::SendLeaderId {}, peer_pid));
                     let peer = Peer::new(peer_pid, stream, self.sender.clone());
                     self.connected_peers.insert(peer_pid, peer);
                 }
@@ -157,6 +160,11 @@ impl PeerHandler {
         client_pid.pop();
         u32::from_str(&client_pid)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "bad client pid"))
+    }
+
+    fn send_actual_leader(stream: &mut TcpStream) {
+        let victory_msg = "coordinator\n".to_owned();
+        stream.write_all(victory_msg.as_bytes());
     }
 }
 

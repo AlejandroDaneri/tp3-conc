@@ -270,7 +270,7 @@ mod tests {
         let transaction_str = "insert pedro 10 0 insert juan 2 123";
         let mut tokens = transaction_str.split_whitespace();
         let transaction = Transaction::parse(&mut tokens);
-        let prev_hash = tokens.next();
+        let _prev_hash = tokens.next();
         let transaction_2 = Transaction::parse(&mut tokens);
         assert!(transaction.is_some());
         assert!(transaction_2.is_some());

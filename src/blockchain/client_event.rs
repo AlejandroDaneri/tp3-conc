@@ -184,6 +184,7 @@ pub enum LeaderMessage {
     OkMessage,
     VictoryMessage,
     PeerDisconnected,
+    SendLeaderId,
 }
 impl LeaderMessage {
     pub fn serialize(&self) -> String {
@@ -201,6 +202,7 @@ impl LeaderMessage {
                 "coordinator\n".to_owned()
             }
             LeaderMessage::PeerDisconnected => unreachable!(),
+            LeaderMessage::SendLeaderId => unreachable!(),
         }
     }
 
