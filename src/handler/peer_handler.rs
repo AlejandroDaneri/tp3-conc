@@ -1,13 +1,11 @@
 use crate::blockchain::peer::{Peer, PeerIdType};
 use crate::communication::client_event::{ClientEvent, LeaderMessage, Message};
-use crate::communication::serialization::Serializable;
-use crate::handler::leader_handler;
 use std::collections::HashMap;
 use std::io;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::str::FromStr;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::SystemTime;
 
@@ -67,10 +65,40 @@ impl PeerProcessor {
     }
 
     fn handle_peer_message(&self, message: Message, peer_id: PeerIdType) {
-        match message {
-            Message::Common(message) => match self.connected_peers.get(&peer_id) {
+        if let Message::Leader(message) = message {
+            match message {
+                LeaderMessage::LeaderElectionRequest { .. } => {
+                    self.connected_peers
+                        .iter()
+                        .filter(|(&peer_id, _)| peer_id > self.own_id)
+                        .for_each(|(peer_id, peer)| {
+                            println!("Pidiendo ser lider a {}", peer_id);
+                            let msg = Message::Leader(LeaderMessage::LeaderElectionRequest {
+                                timestamp: SystemTime::now(),
+                            });
+                            peer.send_message(msg);
+                        });
+                }
+                LeaderMessage::OkMessage {} => {
+                    if let Some(peer) = self.connected_peers.get(&peer_id) {
+                        let sent = peer.send_message(Message::Leader(message));
+                        if sent.is_err() {
+                            println!("Peer {} disconnected!", peer_id);
+                        }
+                    }
+                }
+                LeaderMessage::VictoryMessage {} => {
+                    for (peer_id, peer) in self.connected_peers.iter() {
+                        println!("Send victory to {}!", peer_id);
+                        peer.send_message(Message::Leader(LeaderMessage::VictoryMessage {}));
+                    }
+                }
+                _ => unreachable!(),
+            }
+        } else {
+            match self.connected_peers.get(&peer_id) {
                 Some(peer) => {
-                    let sent = peer.write_message(message);
+                    let sent = peer.send_message(message);
                     if sent.is_err() {
                         println!("Peer {} disconnected!", peer_id);
                         let message = LeaderMessage::PeerDisconnected;
@@ -81,35 +109,7 @@ impl PeerProcessor {
                     let message = LeaderMessage::PeerDisconnected;
                     self.leader_handler_sender.send((message, peer_id));
                 }
-            },
-            Message::Leader(message) => match message {
-                LeaderMessage::LeaderElectionRequest { .. } => {
-                    self.connected_peers
-                        .iter()
-                        .filter(|(&peer_id, _)| peer_id > self.own_id)
-                        .for_each(|(peer_id, peer)| {
-                            println!("Pidiendo ser lider a {}", peer_id);
-                            peer.write_message_leader(LeaderMessage::LeaderElectionRequest {
-                                timestamp: SystemTime::now(),
-                            });
-                        });
-                }
-                LeaderMessage::OkMessage {} => {
-                    if let Some(peer) = self.connected_peers.get(&peer_id) {
-                        let sent = peer.write_message_leader(message);
-                        if sent.is_err() {
-                            println!("Peer {} disconnected!", peer_id);
-                        }
-                    }
-                }
-                LeaderMessage::VictoryMessage {} => {
-                    for (peer_id, peer) in self.connected_peers.iter() {
-                        println!("Send victory to {}!", peer_id);
-                        peer.write_message_leader(LeaderMessage::VictoryMessage {});
-                    }
-                }
-                _ => unreachable!(),
-            },
+            }
         }
     }
 }

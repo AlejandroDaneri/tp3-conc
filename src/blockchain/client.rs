@@ -2,7 +2,7 @@ use std::io;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 use crate::blockchain::peer::PeerIdType;
-use crate::communication::client_event::{ClientEvent, ClientMessage, Message};
+use crate::communication::client_event::{ClientEvent, ClientMessage, Message, LockMessage};
 use crate::handler::connection_handler::ConnectionHandler;
 use crate::handler::input_handler::InputHandler;
 use crate::handler::leader_handler::LeaderHandler;
@@ -12,6 +12,9 @@ use crate::handler::peer_handler::PeerHandler;
 use crate::communication::client_event::LeaderMessage;
 use std::io::Read;
 use std::sync::{Arc, Condvar, Mutex};
+use crate::handler::lock_handler::LockHandler;
+use crate::blockchain::lock::CentralizedLock;
+use std::ops::Deref;
 
 #[derive(Debug)]
 pub struct Client {
@@ -33,6 +36,7 @@ impl Client {
         let (sender, receiver) = channel();
 
         let (leader_handler_sender, leader_handler_receiver) = channel();
+        let (lock_handler_sender, lock_handler_receiver) = channel();
         let (peer_handler_sender, peer_handler_receiver) = channel();
         let (message_handler_sender, message_handler_receiver) = channel();
         let (output_sender, output_receiver) = channel();
@@ -51,8 +55,13 @@ impl Client {
             self.id,
         );
 
+        let lock = CentralizedLock::new();
+        let lock_notify = Arc::new((Mutex::new(lock), Condvar::new()));
+        let lock_handler = LockHandler::new( lock_handler_receiver, peer_handler_sender.clone(), lock_notify.clone());
+
         let connection_handler = ConnectionHandler::new(sender.clone(), port_from, port_to);
         let input_handler = InputHandler::new(source, sender, output_receiver);
+
 
         let message_handler = MessageHandler::new(
             self.id,
@@ -66,8 +75,10 @@ impl Client {
         self.dispatch_messages(
             receiver,
             peer_handler_sender,
-            leader_handler_sender,
             message_handler_sender,
+            leader_handler_sender,
+            lock_handler_sender,
+            lock_notify
         )?;
 
         drop(connection_handler);
@@ -75,6 +86,7 @@ impl Client {
         drop(input_handler);
         drop(message_handler);
         drop(leader_handler);
+        drop(lock_handler);
 
         Ok(())
     }
@@ -83,8 +95,10 @@ impl Client {
         &mut self,
         event_receiver: Receiver<ClientEvent>,
         peer_sender: Sender<ClientEvent>,
-        leader_sender: Sender<(LeaderMessage, PeerIdType)>,
         message_sender: Sender<(ClientMessage, PeerIdType)>,
+        leader_sender: Sender<(LeaderMessage, PeerIdType)>,
+        lock_sender: Sender<PeerIdType>,
+        lock_notify: Arc<(Mutex<CentralizedLock>, Condvar)>
     ) -> io::Result<()> {
         while let Ok(event) = event_receiver.recv() {
             match event {
@@ -103,6 +117,19 @@ impl Client {
                         leader_sender.send((message, peer_id)).map_err(|_| {
                             io::Error::new(io::ErrorKind::Other, "leader sender error")
                         })?;
+                    }
+                    Message::Lock(message) => {
+                        match message {
+                            LockMessage::Acquire => {
+                                lock_sender.send(peer_id).map_err(|_| {
+                                    io::Error::new(io::ErrorKind::Other, "lock sender error")
+                                })?;
+                            }
+                            LockMessage::Release => {
+                                let (mutex, cv) = lock_notify.deref();
+                                cv.notify_all();
+                            }
+                        }
                     }
                 },
                 ClientEvent::UserInput { message } => match &message {
@@ -125,6 +152,11 @@ impl Client {
                     Message::Leader(message) => {
                         leader_sender.send((message.clone(), 0)).map_err(|_| {
                             io::Error::new(io::ErrorKind::Other, "leader sender error")
+                        })?;
+                    },
+                    Message::Lock(message) => {
+                        lock_sender.send(0).map_err(|_| {
+                            io::Error::new(io::ErrorKind::Other, "lock sender error")
                         })?;
                     }
                 },

@@ -39,6 +39,7 @@ impl ClientEvent {
 pub enum Message {
     Common(ClientMessage),
     Leader(LeaderMessage),
+    Lock(LockMessage),
 }
 
 impl Serializable for Message {
@@ -46,15 +47,18 @@ impl Serializable for Message {
         match self {
             Message::Common(message) => message.serialize(),
             Message::Leader(message) => message.serialize(),
+            Message::Lock(message) => message.serialize(),
         }
     }
 
     fn deserialize(line: &str) -> Option<Self> {
         if let Some(message) = ClientMessage::deserialize(&line) {
             Some(Message::Common(message))
-        } else {
-            let message = LeaderMessage::deserialize(&line)?;
+        } else if let Some(message) = LeaderMessage::deserialize(&line) {
             Some(Message::Leader(message))
+        } else {
+            let message = LockMessage::deserialize(&line)?;
+            Some(Message::Lock(message))
         }
     }
 }
@@ -65,9 +69,8 @@ pub enum ClientMessage {
     ReadBlockchainResponse { blockchain: Blockchain },
     WriteBlockchainRequest { transaction: Transaction },
     WriteBlockchainResponse {},
+    LockResponse(bool),
     LeaderElectionFinished,
-    LockRequest,
-    LockResponse { acquired: bool },
     ErrorResponse(ErrorMessage),
 }
 
@@ -88,12 +91,11 @@ impl Serializable for ClientMessage {
                 format!("wb {}\n", transaction.serialize())
             }
             ClientMessage::WriteBlockchainResponse {} => "wb_response\n".to_owned(),
-            ClientMessage::LockRequest => "lock get\n".to_owned(),
-            ClientMessage::LockResponse { acquired } => {
+            ClientMessage::LockResponse (acquired) => {
                 if *acquired {
-                    "lock acquired\n".to_owned()
+                    "lock_ok\n".to_owned()
                 } else {
-                    "lock failed\n".to_owned()
+                    "lock_failed\n".to_owned()
                 }
             }
             ClientMessage::ErrorResponse(ErrorMessage::NotLeaderError) => {
@@ -113,7 +115,8 @@ impl Serializable for ClientMessage {
             Some("rb") => Some(ClientMessage::ReadBlockchainRequest {}),
             Some("wb") => ClientMessage::parse_write_blockchain(&mut tokens),
             Some("wb_response") => Some(ClientMessage::WriteBlockchainResponse {}),
-            Some("lock") => ClientMessage::parse_lock(&mut tokens),
+            Some("lock_failed") => Some(ClientMessage::LockResponse(false)),
+            Some("lock_ok") => Some(ClientMessage::LockResponse(true)),
             Some("blockchain") => ClientMessage::parse_blockchain(&mut tokens),
             Some("error") => ClientMessage::parse_error(&mut tokens),
             _ => None,
@@ -125,16 +128,6 @@ impl ClientMessage {
     fn parse_write_blockchain(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
         let transaction = Transaction::parse(tokens)?;
         Some(ClientMessage::WriteBlockchainRequest { transaction })
-    }
-
-    fn parse_lock(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
-        let read_only_str = tokens.next()?;
-        match read_only_str {
-            "get" => Some(ClientMessage::LockRequest),
-            "acquired" => Some(ClientMessage::LockResponse { acquired: true }),
-            "failed" => Some(ClientMessage::LockResponse { acquired: false }),
-            _ => None,
-        }
     }
 
     fn parse_blockchain(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
@@ -164,6 +157,7 @@ pub enum LeaderMessage {
     PeerDisconnected,
     SendLeaderId,
 }
+
 impl LeaderMessage {
     pub fn serialize(&self) -> String {
         match self {
@@ -200,5 +194,30 @@ impl LeaderMessage {
         Some(LeaderMessage::LeaderElectionRequest {
             timestamp: SystemTime::now(),
         })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum LockMessage {
+    Acquire,
+    Release,
+}
+
+impl Serializable for LockMessage {
+    fn serialize(&self) -> String {
+        match self {
+            LockMessage::Acquire => "lock_acquire".to_owned(),
+            LockMessage::Release => "lock_release".to_owned(),
+        }
+    }
+
+    fn deserialize(line: &str) -> Option<LockMessage> {
+        let mut tokens = line.split_whitespace();
+        let action = tokens.next();
+        match action {
+            Some("lock_acquire") => Some(LockMessage::Acquire),
+            Some("lock_release") => Some(LockMessage::Release),
+            _ => None,
+        }
     }
 }

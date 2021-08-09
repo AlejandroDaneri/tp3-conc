@@ -3,12 +3,12 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 
 use crate::blockchain::blockchain::Blockchain;
-use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
 use crate::blockchain::peer::PeerIdType;
 use crate::communication::client_event::{
     ClientEvent, ClientMessage, ErrorMessage, LeaderMessage, Message,
 };
 use std::thread;
+use std::ops::Deref;
 
 #[derive(Debug)]
 pub struct MessageHandler {
@@ -48,12 +48,7 @@ impl MessageHandler {
     ) -> io::Result<()> {
         let mut processor = MessageProcessor::new(own_id, leader_handler_sender, output_sender);
         for (message, peer_id) in message_receiver {
-            let (mutex, cv) = &*leader_notify;
-            if let Ok(leader_lock) = mutex.lock() {
-                let _guard = cv
-                    .wait_while(leader_lock, |leader_busy| *leader_busy)
-                    .unwrap();
-            }
+            MessageHandler::wait_leader_election(&leader_notify);
             if let Some(response) = processor.process_message(message, peer_id) {
                 peer_sender
                     .send(ClientEvent::PeerMessage {
@@ -71,11 +66,19 @@ impl MessageHandler {
         println!("Saliendo del hilo de mensajes");
         Ok(())
     }
+
+    fn wait_leader_election(leader_notify: &Arc<(Mutex<bool>, Condvar)>) {
+        let (mutex, cv) = leader_notify.deref();
+        if let Ok(leader_lock) = mutex.lock() {
+            let _guard = cv
+                .wait_while(leader_lock, |leader_busy| *leader_busy)
+                .unwrap();
+        }
+    }
 }
 
 struct MessageProcessor {
     id: PeerIdType,
-    lock: CentralizedLock,
     blockchain: Blockchain,
     leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
     output_sender: Sender<ClientMessage>,
@@ -89,7 +92,6 @@ impl MessageProcessor {
     ) -> Self {
         MessageProcessor {
             id: own_id,
-            lock: CentralizedLock::new(),
             blockchain: Blockchain::new(),
             leader_handler_sender,
             output_sender,
@@ -105,11 +107,11 @@ impl MessageProcessor {
         println!("process_message: {:?}", message);
         match message {
             ClientMessage::ReadBlockchainRequest {} => {
-                if !self.lock.is_owned_by(peer_id) {
+                /*if !self.lock.is_owned_by(peer_id) {
                     return Some(ClientMessage::ErrorResponse(
                         ErrorMessage::LockNotAcquiredError,
                     ));
-                }
+                }*/
                 if self.is_leader() {
                     Some(ClientMessage::ReadBlockchainResponse {
                         blockchain: self.blockchain.clone(),
@@ -135,15 +137,6 @@ impl MessageProcessor {
             ClientMessage::WriteBlockchainResponse {} => {
                 self.output_sender.send(message);
                 None
-            }
-
-            ClientMessage::LockRequest => {
-                if self.is_leader() {
-                    let acquired = self.lock.acquire(peer_id) == LockResult::Acquired;
-                    Some(ClientMessage::LockResponse { acquired })
-                } else {
-                    Some(ClientMessage::ErrorResponse(ErrorMessage::NotLeaderError))
-                }
             }
             ClientMessage::LockResponse { .. } => {
                 print!("Obtuve lock? {:?}", message);
