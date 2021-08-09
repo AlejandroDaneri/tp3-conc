@@ -1,15 +1,15 @@
 use std::io;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
-use crate::blockchain::client_event::{ClientEvent, ClientMessage, Message};
 use crate::blockchain::peer::PeerIdType;
+use crate::communication::client_event::{ClientEvent, ClientMessage, Message};
 use crate::handler::connection_handler::ConnectionHandler;
 use crate::handler::input_handler::InputHandler;
 use crate::handler::leader_handler::LeaderHandler;
 use crate::handler::message_handler::MessageHandler;
 use crate::handler::peer_handler::PeerHandler;
 
-use super::client_event::LeaderMessage;
+use crate::communication::client_event::LeaderMessage;
 use std::io::Read;
 use std::sync::{Arc, Condvar, Mutex};
 

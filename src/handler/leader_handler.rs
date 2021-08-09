@@ -1,12 +1,10 @@
-use std::{io, sync::mpsc::Receiver, thread};
-
-use crate::blockchain::client_event::{ClientEvent, ClientMessage, Message};
-use crate::blockchain::{client_event::LeaderMessage, peer::PeerIdType};
-
+use std::sync::mpsc::{RecvTimeoutError, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, SystemTime};
+use std::{io, sync::mpsc::Receiver, thread};
 
-use std::sync::mpsc::{RecvTimeoutError, Sender};
+use crate::blockchain::peer::PeerIdType;
+use crate::communication::client_event::{ClientEvent, ClientMessage, LeaderMessage, Message};
 
 #[derive(Debug)]
 pub struct LeaderHandler {

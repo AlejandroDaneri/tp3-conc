@@ -1,10 +1,10 @@
-use std::io::{BufRead, BufReader, Read};
 use std::net::TcpStream;
+use std::sync::mpsc::Sender;
 use std::time::SystemTime;
 
 use crate::blockchain::blockchain::{Blockchain, Transaction};
 use crate::blockchain::peer::PeerIdType;
-use std::sync::mpsc::Sender;
+use crate::communication::serialization::Serializable;
 
 #[derive(Debug)]
 pub enum ClientEvent {
@@ -41,23 +41,32 @@ pub enum Message {
     Leader(LeaderMessage),
 }
 
-impl Message {
-    pub fn serialize(&self) -> String {
+impl Serializable for Message {
+    fn serialize(&self) -> String {
         match self {
             Message::Common(message) => message.serialize(),
             Message::Leader(message) => message.serialize(),
+        }
+    }
+
+    fn deserialize(line: &str) -> Option<Self> {
+        if let Some(message) = ClientMessage::deserialize(&line) {
+            Some(Message::Common(message))
+        } else {
+            let message = LeaderMessage::deserialize(&line)?;
+            Some(Message::Leader(message))
         }
     }
 }
 
 #[derive(Clone, Debug)]
 pub enum ClientMessage {
-    ReadBlockchainRequest {},
+    ReadBlockchainRequest,
     ReadBlockchainResponse { blockchain: Blockchain },
     WriteBlockchainRequest { transaction: Transaction },
     WriteBlockchainResponse {},
     LeaderElectionFinished,
-    LockRequest { read_only: bool },
+    LockRequest,
     LockResponse { acquired: bool },
     ErrorResponse(ErrorMessage),
     BroadcastBlockchain { blockchain: Blockchain },
@@ -69,8 +78,8 @@ pub enum ErrorMessage {
     LockNotAcquiredError,
 }
 
-impl ClientMessage {
-    pub fn serialize(&self) -> String {
+impl Serializable for ClientMessage {
+    fn serialize(&self) -> String {
         match self {
             ClientMessage::ReadBlockchainRequest {} => "rb\n".to_owned(),
             ClientMessage::ReadBlockchainResponse { blockchain } => {
@@ -80,13 +89,7 @@ impl ClientMessage {
                 format!("wb {}\n", transaction.serialize())
             }
             ClientMessage::WriteBlockchainResponse {} => "wb_response\n".to_owned(),
-            ClientMessage::LockRequest { read_only } => {
-                if *read_only {
-                    "lock read\n".to_owned()
-                } else {
-                    "lock write\n".to_owned()
-                }
-            }
+            ClientMessage::LockRequest => "lock get\n".to_owned(),
             ClientMessage::LockResponse { acquired } => {
                 if *acquired {
                     "lock acquired\n".to_owned()
@@ -107,7 +110,7 @@ impl ClientMessage {
         }
     }
 
-    pub fn deserialize(line: &str) -> Option<ClientMessage> {
+    fn deserialize(line: &str) -> Option<ClientMessage> {
         let mut tokens = line.split_whitespace();
         let action = tokens.next();
         match action {
@@ -120,7 +123,9 @@ impl ClientMessage {
             _ => None,
         }
     }
+}
 
+impl ClientMessage {
     fn parse_write_blockchain(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
         let transaction = Transaction::parse(tokens)?;
         Some(ClientMessage::WriteBlockchainRequest { transaction })
@@ -129,8 +134,7 @@ impl ClientMessage {
     fn parse_lock(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
         let read_only_str = tokens.next()?;
         match read_only_str {
-            "read" => Some(ClientMessage::LockRequest { read_only: true }),
-            "write" => Some(ClientMessage::LockRequest { read_only: false }),
+            "get" => Some(ClientMessage::LockRequest),
             "acquired" => Some(ClientMessage::LockResponse { acquired: true }),
             "failed" => Some(ClientMessage::LockResponse { acquired: false }),
             _ => None,
@@ -151,32 +155,6 @@ impl ClientMessage {
                 ErrorMessage::LockNotAcquiredError,
             )),
             _ => None,
-        }
-    }
-}
-
-pub struct ClientEventReader<R> {
-    reader: BufReader<R>,
-}
-
-impl<R: Read> ClientEventReader<R> {
-    pub fn new(source: R) -> Self {
-        let reader = BufReader::new(source);
-        Self { reader }
-    }
-}
-
-impl<R: Read> Iterator for ClientEventReader<R> {
-    type Item = Message;
-    fn next(&mut self) -> Option<<Self as Iterator>::Item> {
-        let mut line = String::new();
-        self.reader.read_line(&mut line).ok()?;
-        line.pop();
-        if let Some(message) = ClientMessage::deserialize(&line) {
-            Some(Message::Common(message))
-        } else {
-            let message = LeaderMessage::deserialize(&line)?;
-            Some(Message::Leader(message))
         }
     }
 }

@@ -1,6 +1,5 @@
-use crate::blockchain::client_event::{ClientEvent, ClientMessage, LeaderMessage, Message};
 use crate::blockchain::peer::{Peer, PeerIdType};
-
+use crate::communication::client_event::{ClientEvent, LeaderMessage, Message, ClientMessage};
 use std::collections::HashMap;
 use std::io;
 use std::io::{BufRead, BufReader, Write};

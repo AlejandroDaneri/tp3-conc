@@ -3,11 +3,11 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 
 use crate::blockchain::blockchain::Blockchain;
-use crate::blockchain::client_event::{
-    ClientEvent, ClientMessage, ErrorMessage, LeaderMessage, Message,
-};
 use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
 use crate::blockchain::peer::PeerIdType;
+use crate::communication::client_event::{
+    ClientEvent, ClientMessage, ErrorMessage, LeaderMessage, Message,
+};
 use std::thread;
 
 #[derive(Debug)]
@@ -139,7 +139,7 @@ impl MessageProcessor {
                 None
             }
 
-            ClientMessage::LockRequest { read_only: _ } => {
+            ClientMessage::LockRequest => {
                 if self.is_leader() {
                     let acquired = self.lock.acquire(peer_id) == LockResult::Acquired;
                     Some(ClientMessage::LockResponse { acquired })
@@ -148,6 +148,7 @@ impl MessageProcessor {
                 }
             }
             ClientMessage::LockResponse { .. } => {
+                print!("Obtuve lock? {:?}", message);
                 self.output_sender.send(message);
                 None
             }
