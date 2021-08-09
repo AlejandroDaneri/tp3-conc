@@ -85,8 +85,11 @@ impl PeerProcessor {
                         }
                     }
                     _ => {
-                        let message = LeaderMessage::PeerDisconnected;
-                        self.leader_handler_sender.send((message, peer_id));
+                        if peer_id != self.own_id {
+                            let message = LeaderMessage::PeerDisconnected;
+                            self.leader_handler_sender.send((message, peer_id));
+                        }
+                        //TODO: aca llega {PH: Processing event: PeerMessage { message: Common(ErrorResponse(LockNotAcquiredError)), peer_id: 39246 }}
                     }
                 },
             },

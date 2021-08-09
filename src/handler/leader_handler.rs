@@ -8,8 +8,6 @@ use std::time::{Duration, SystemTime};
 
 use std::sync::mpsc::{RecvTimeoutError, Sender};
 
-
-
 #[derive(Debug)]
 pub struct LeaderHandler {
     thread_handle: Option<thread::JoinHandle<()>>,
@@ -110,7 +108,6 @@ impl LeaderProcessor {
                             self.notify_victory();
                             self.current_leader = self.own_id;
                             if self.election_by_user {
-                                println!("destrabando");
                                 self.output_sender
                                     .send(ClientMessage::LeaderElectionFinished)
                                     .unwrap();
@@ -165,7 +162,7 @@ impl LeaderProcessor {
                 response_sender.send(self.current_leader).unwrap();
             }
             LeaderMessage::PeerDisconnected => {
-                if peer_id == self.current_leader {
+                if peer_id == self.current_leader && self.own_id != peer_id {
                     self.run_election(message, peer_id);
                 }
             }
