@@ -6,8 +6,6 @@ use std::{io, sync::mpsc::Receiver, thread};
 use crate::blockchain::peer::PeerIdType;
 use crate::communication::client_event::{ClientEvent, ClientMessage, LeaderMessage, Message};
 
-use super::peer_handler;
-
 #[derive(Debug)]
 pub struct LeaderHandler {
     thread_handle: Option<thread::JoinHandle<()>>,
@@ -108,7 +106,6 @@ impl LeaderProcessor {
                             self.notify_victory();
                             self.current_leader = self.own_id;
                             if self.election_by_user {
-                                println!("destrabando");
                                 self.output_sender
                                     .send(ClientMessage::LeaderElectionFinished)
                                     .unwrap();
@@ -163,7 +160,7 @@ impl LeaderProcessor {
                 response_sender.send(self.current_leader).unwrap();
             }
             LeaderMessage::PeerDisconnected => {
-                if peer_id == self.current_leader {
+                if peer_id == self.current_leader && self.own_id != peer_id {
                     self.run_election(message, peer_id);
                 }
             }
@@ -174,6 +171,12 @@ impl LeaderProcessor {
                         peer_id,
                     });
                 }
+            }
+            LeaderMessage::BroadcastBlockchain { blockchain } => {
+                self.peer_handler_sender.send(ClientEvent::PeerMessage {
+                    peer_id: self.own_id,
+                    message: Message::Common(ClientMessage::BroadcastBlockchain { blockchain }),
+                });
             }
         }
     }

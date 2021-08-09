@@ -1,13 +1,11 @@
 use crate::blockchain::peer::{Peer, PeerIdType};
-use crate::communication::client_event::{ClientEvent, LeaderMessage, Message};
-use crate::communication::serialization::Serializable;
-use crate::handler::leader_handler;
+use crate::communication::client_event::{ClientEvent, LeaderMessage, Message, ClientMessage};
 use std::collections::HashMap;
 use std::io;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::str::FromStr;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::SystemTime;
 
@@ -77,10 +75,22 @@ impl PeerProcessor {
                         self.leader_handler_sender.send((message, peer_id));
                     }
                 }
-                None => {
-                    let message = LeaderMessage::PeerDisconnected;
-                    self.leader_handler_sender.send((message, peer_id));
-                }
+                None => match message {
+                    ClientMessage::BroadcastBlockchain { blockchain } => {
+                        for (_pid, peer) in self.connected_peers.iter() {
+                            peer.write_message(ClientMessage::ReadBlockchainResponse {
+                                blockchain: blockchain.clone(),
+                            });
+                        }
+                    }
+                    _ => {
+                        if peer_id != self.own_id {
+                            let message = LeaderMessage::PeerDisconnected;
+                            self.leader_handler_sender.send((message, peer_id));
+                        }
+                        //TODO: aca llega {PH: Processing event: PeerMessage { message: Common(ErrorResponse(LockNotAcquiredError)), peer_id: 39246 }}
+                    }
+                },
             },
             Message::Leader(message) => match message {
                 LeaderMessage::LeaderElectionRequest { .. } => {
