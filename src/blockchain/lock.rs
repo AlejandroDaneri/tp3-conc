@@ -30,7 +30,7 @@ pub trait Lock {
 pub struct CentralizedLock {
     peer_id: Option<PeerIdType>,
     lock_time: SystemTime,
-    expiration_time: u64
+    expiration_time: u64,
 }
 
 impl Lock for CentralizedLock {
@@ -81,7 +81,7 @@ impl CentralizedLock {
         CentralizedLock {
             peer_id: None,
             lock_time: SystemTime::UNIX_EPOCH,
-            expiration_time: LOCK_EXPIRATION_TIME
+            expiration_time: LOCK_EXPIRATION_TIME,
         }
     }
 }

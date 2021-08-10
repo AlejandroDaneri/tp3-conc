@@ -1,11 +1,11 @@
-use std::io;
-use std::thread;
-use std::sync::{Arc, Mutex, Condvar};
-use std::sync::mpsc::{Sender, Receiver};
-use crate::blockchain::peer::PeerIdType;
 use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
+use crate::blockchain::peer::PeerIdType;
 use crate::communication::client_event::{ClientEvent, ClientMessage, Message};
+use std::io;
 use std::ops::Deref;
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{Arc, Condvar, Mutex};
+use std::thread;
 use std::time::Duration;
 
 pub struct LockHandler {
@@ -15,7 +15,7 @@ pub struct LockHandler {
 struct LockProcessor {
     message_receiver: Receiver<PeerIdType>, // Sólo llegan mensajes de acquire
     peer_handler_sender: Sender<ClientEvent>,
-    lock_notify: Arc<(Mutex<CentralizedLock>, Condvar)>
+    lock_notify: Arc<(Mutex<CentralizedLock>, Condvar)>,
 }
 
 impl LockHandler {
@@ -25,12 +25,7 @@ impl LockHandler {
         lock_notify: Arc<(Mutex<CentralizedLock>, Condvar)>,
     ) -> Self {
         let thread_handle = Some(thread::spawn(move || {
-            LockHandler::run(
-                lock_receiver,
-                peer_handler_sender,
-                lock_notify
-            )
-                .unwrap();
+            LockHandler::run(lock_receiver, peer_handler_sender, lock_notify).unwrap();
         }));
         LockHandler { thread_handle }
     }
@@ -38,7 +33,7 @@ impl LockHandler {
     fn run(
         message_receiver: Receiver<PeerIdType>,
         peer_handler_sender: Sender<ClientEvent>,
-        lock_notify: Arc<(Mutex<CentralizedLock>, Condvar)>
+        lock_notify: Arc<(Mutex<CentralizedLock>, Condvar)>,
     ) -> io::Result<()> {
         let mut processor = LockProcessor::new(message_receiver, peer_handler_sender, lock_notify);
         processor.run();
@@ -50,12 +45,12 @@ impl LockProcessor {
     pub fn new(
         message_receiver: Receiver<PeerIdType>,
         peer_handler_sender: Sender<ClientEvent>,
-        lock_notify: Arc<(Mutex<CentralizedLock>, Condvar)>
+        lock_notify: Arc<(Mutex<CentralizedLock>, Condvar)>,
     ) -> Self {
         LockProcessor {
             message_receiver,
             peer_handler_sender,
-            lock_notify
+            lock_notify,
         }
     }
 
@@ -65,21 +60,21 @@ impl LockProcessor {
             let acquired;
             if let Ok(leader_lock) = mutex.lock() {
                 println!("Taking CV...");
-                let timeout= Duration::from_secs(leader_lock.get_duration());
-                match cv.wait_timeout_while(leader_lock, timeout,|lock| lock.is_owned_by(peer_id)) {
+                let timeout = Duration::from_secs(leader_lock.get_duration());
+                match cv.wait_timeout_while(leader_lock, timeout, |lock| lock.is_owned_by(peer_id))
+                {
                     Ok(mut guard) => {
                         acquired = guard.0.acquire(peer_id) == LockResult::Acquired;
                     }
-                    _ => {
-                        acquired = false
-                    }
+                    _ => acquired = false,
                 }
             } else {
                 acquired = false
             }
             let message = Message::Common(ClientMessage::LockResponse(acquired));
             println!("Send lock ok...");
-            self.peer_handler_sender.send(ClientEvent::PeerMessage { message, peer_id });
+            self.peer_handler_sender
+                .send(ClientEvent::PeerMessage { message, peer_id });
         }
     }
 }

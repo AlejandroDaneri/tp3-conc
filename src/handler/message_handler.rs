@@ -3,12 +3,13 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 
 use crate::blockchain::blockchain::Blockchain;
+use crate::blockchain::lock::{CentralizedLock, Lock};
 use crate::blockchain::peer::PeerIdType;
 use crate::communication::client_event::{
     ClientEvent, ClientMessage, ErrorMessage, LeaderMessage, Message,
 };
-use std::thread;
 use std::ops::Deref;
+use std::thread;
 
 #[derive(Debug)]
 pub struct MessageHandler {
@@ -23,6 +24,7 @@ impl MessageHandler {
         leader_notify: Arc<(Mutex<bool>, Condvar)>,
         leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
         output_sender: Sender<ClientMessage>,
+        lock_notify: Arc<(Mutex<CentralizedLock>, Condvar)>,
     ) -> Self {
         let thread_handle = Some(thread::spawn(move || {
             MessageHandler::run(
@@ -32,6 +34,7 @@ impl MessageHandler {
                 leader_notify,
                 leader_handler_sender,
                 output_sender,
+                lock_notify,
             )
             .unwrap();
         }));
@@ -45,8 +48,10 @@ impl MessageHandler {
         leader_notify: Arc<(Mutex<bool>, Condvar)>,
         leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
         output_sender: Sender<ClientMessage>,
+        lock_notify: Arc<(Mutex<CentralizedLock>, Condvar)>,
     ) -> io::Result<()> {
-        let mut processor = MessageProcessor::new(own_id, leader_handler_sender, output_sender);
+        let mut processor =
+            MessageProcessor::new(own_id, leader_handler_sender, output_sender, lock_notify);
         for (message, peer_id) in message_receiver {
             MessageHandler::wait_leader_election(&leader_notify);
             if let Some(response) = processor.process_message(message, peer_id) {
@@ -82,6 +87,7 @@ struct MessageProcessor {
     blockchain: Blockchain,
     leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
     output_sender: Sender<ClientMessage>,
+    lock_notify: Arc<(Mutex<CentralizedLock>, Condvar)>,
 }
 
 impl MessageProcessor {
@@ -89,12 +95,14 @@ impl MessageProcessor {
         own_id: PeerIdType,
         leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
         output_sender: Sender<ClientMessage>,
+        lock_notify: Arc<(Mutex<CentralizedLock>, Condvar)>,
     ) -> Self {
         MessageProcessor {
             id: own_id,
             blockchain: Blockchain::new(),
             leader_handler_sender,
             output_sender,
+            lock_notify,
         }
     }
 
@@ -107,18 +115,9 @@ impl MessageProcessor {
         println!("process_message: {:?}", message);
         match message {
             ClientMessage::ReadBlockchainRequest {} => {
-                /*if !self.lock.is_owned_by(peer_id) {
-                    return Some(ClientMessage::ErrorResponse(
-                        ErrorMessage::LockNotAcquiredError,
-                    ));
-                }*/
-                if self.is_leader() {
-                    Some(ClientMessage::ReadBlockchainResponse {
-                        blockchain: self.blockchain.clone(),
-                    })
-                } else {
-                    Some(ClientMessage::ErrorResponse(ErrorMessage::NotLeaderError))
-                }
+                Some(ClientMessage::ReadBlockchainResponse {
+                    blockchain: self.blockchain.clone(),
+                })
             }
             ClientMessage::ReadBlockchainResponse { blockchain } => {
                 self.blockchain = blockchain;
@@ -126,13 +125,27 @@ impl MessageProcessor {
                 None
             }
             ClientMessage::WriteBlockchainRequest { transaction } => {
-                if self.is_leader() {
-                    {
-                        let _valid = self.blockchain.validate(&transaction); //esto deberia ser la transaccion que recibe cuando devuelve el lock
-                        self.blockchain.add_transaction(transaction);
+                if let Ok(guard) = self.lock_notify.0.lock() {
+                    let locked = guard.is_owned_by(peer_id);
+                    if !locked {
+                        return Some(ClientMessage::ErrorResponse(
+                            ErrorMessage::LockNotAcquiredError,
+                        ));
                     }
                 }
-                Some(ClientMessage::WriteBlockchainResponse {})
+                if self.is_leader() {
+                    let _valid = self.blockchain.validate(&transaction); //esto deberia ser la transaccion que recibe cuando devuelve el lock
+                    self.blockchain.add_transaction(transaction);
+                    self.leader_handler_sender.send((
+                        LeaderMessage::BroadcastBlockchain {
+                            blockchain: self.blockchain.clone(),
+                        },
+                        self.id,
+                    ));
+                    Some(ClientMessage::WriteBlockchainResponse {})
+                } else {
+                    Some(ClientMessage::ErrorResponse(ErrorMessage::NotLeaderError))
+                }
             }
             ClientMessage::WriteBlockchainResponse {} => {
                 self.output_sender.send(message);
@@ -149,6 +162,10 @@ impl MessageProcessor {
             }
             ClientMessage::LeaderElectionFinished {} => {
                 self.output_sender.send(message);
+                None
+            }
+            ClientMessage::BroadcastBlockchain { blockchain } => {
+                self.blockchain = blockchain;
                 None
             }
         }

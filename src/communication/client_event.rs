@@ -72,6 +72,7 @@ pub enum ClientMessage {
     LockResponse(bool),
     LeaderElectionFinished,
     ErrorResponse(ErrorMessage),
+    BroadcastBlockchain { blockchain: Blockchain },
 }
 
 #[derive(Clone, Debug)]
@@ -91,7 +92,7 @@ impl Serializable for ClientMessage {
                 format!("wb {}\n", transaction.serialize())
             }
             ClientMessage::WriteBlockchainResponse {} => "wb_response\n".to_owned(),
-            ClientMessage::LockResponse (acquired) => {
+            ClientMessage::LockResponse(acquired) => {
                 if *acquired {
                     "lock_ok\n".to_owned()
                 } else {
@@ -105,6 +106,9 @@ impl Serializable for ClientMessage {
                 "error not_locked\n".to_owned()
             }
             ClientMessage::LeaderElectionFinished {} => "info leader_election_finished".to_owned(),
+            ClientMessage::BroadcastBlockchain { blockchain } => {
+                format!("blockchain {}\n", blockchain.serialize())
+            }
         }
     }
 
@@ -156,6 +160,7 @@ pub enum LeaderMessage {
     VictoryMessage,
     PeerDisconnected,
     SendLeaderId,
+    BroadcastBlockchain { blockchain: Blockchain },
 }
 
 impl LeaderMessage {
@@ -175,6 +180,7 @@ impl LeaderMessage {
             }
             LeaderMessage::PeerDisconnected => unreachable!(),
             LeaderMessage::SendLeaderId => unreachable!(),
+            LeaderMessage::BroadcastBlockchain { blockchain: _ } => unreachable!(),
         }
     }
 

@@ -2,19 +2,19 @@ use std::io;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 use crate::blockchain::peer::PeerIdType;
-use crate::communication::client_event::{ClientEvent, ClientMessage, Message, LockMessage};
+use crate::communication::client_event::{ClientEvent, ClientMessage, LockMessage, Message};
 use crate::handler::connection_handler::ConnectionHandler;
 use crate::handler::input_handler::InputHandler;
 use crate::handler::leader_handler::LeaderHandler;
 use crate::handler::message_handler::MessageHandler;
 use crate::handler::peer_handler::PeerHandler;
 
-use crate::communication::client_event::LeaderMessage;
-use std::io::Read;
-use std::sync::{Arc, Condvar, Mutex};
-use crate::handler::lock_handler::LockHandler;
 use crate::blockchain::lock::CentralizedLock;
+use crate::communication::client_event::LeaderMessage;
+use crate::handler::lock_handler::LockHandler;
+use std::io::Read;
 use std::ops::Deref;
+use std::sync::{Arc, Condvar, Mutex};
 
 #[derive(Debug)]
 pub struct Client {
@@ -57,11 +57,14 @@ impl Client {
 
         let lock = CentralizedLock::new();
         let lock_notify = Arc::new((Mutex::new(lock), Condvar::new()));
-        let lock_handler = LockHandler::new( lock_handler_receiver, peer_handler_sender.clone(), lock_notify.clone());
+        let lock_handler = LockHandler::new(
+            lock_handler_receiver,
+            peer_handler_sender.clone(),
+            lock_notify.clone(),
+        );
 
         let connection_handler = ConnectionHandler::new(sender.clone(), port_from, port_to);
         let input_handler = InputHandler::new(source, sender, output_receiver);
-
 
         let message_handler = MessageHandler::new(
             self.id,
@@ -70,6 +73,7 @@ impl Client {
             leader_notify,
             leader_handler_sender.clone(),
             output_sender,
+            lock_notify.clone(),
         );
 
         self.dispatch_messages(
@@ -78,7 +82,7 @@ impl Client {
             message_handler_sender,
             leader_handler_sender,
             lock_handler_sender,
-            lock_notify
+            lock_notify,
         )?;
 
         drop(connection_handler);
@@ -98,7 +102,7 @@ impl Client {
         message_sender: Sender<(ClientMessage, PeerIdType)>,
         leader_sender: Sender<(LeaderMessage, PeerIdType)>,
         lock_sender: Sender<PeerIdType>,
-        lock_notify: Arc<(Mutex<CentralizedLock>, Condvar)>
+        lock_notify: Arc<(Mutex<CentralizedLock>, Condvar)>,
     ) -> io::Result<()> {
         while let Ok(event) = event_receiver.recv() {
             match event {
@@ -118,19 +122,17 @@ impl Client {
                             io::Error::new(io::ErrorKind::Other, "leader sender error")
                         })?;
                     }
-                    Message::Lock(message) => {
-                        match message {
-                            LockMessage::Acquire => {
-                                lock_sender.send(peer_id).map_err(|_| {
-                                    io::Error::new(io::ErrorKind::Other, "lock sender error")
-                                })?;
-                            }
-                            LockMessage::Release => {
-                                let (mutex, cv) = lock_notify.deref();
-                                cv.notify_all();
-                            }
+                    Message::Lock(message) => match message {
+                        LockMessage::Acquire => {
+                            lock_sender.send(peer_id).map_err(|_| {
+                                io::Error::new(io::ErrorKind::Other, "lock sender error")
+                            })?;
                         }
-                    }
+                        LockMessage::Release => {
+                            let (_, cv) = lock_notify.deref();
+                            cv.notify_all();
+                        }
+                    },
                 },
                 ClientEvent::UserInput { message } => match &message {
                     Message::Common(inner) => {
@@ -153,7 +155,7 @@ impl Client {
                         leader_sender.send((message.clone(), 0)).map_err(|_| {
                             io::Error::new(io::ErrorKind::Other, "leader sender error")
                         })?;
-                    },
+                    }
                     Message::Lock(message) => {
                         lock_sender.send(0).map_err(|_| {
                             io::Error::new(io::ErrorKind::Other, "lock sender error")

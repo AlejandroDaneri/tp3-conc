@@ -4,8 +4,8 @@ use std::net::TcpStream;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 
-use crate::communication::client_event::Message;
 use crate::communication::client_event::ClientEvent;
+use crate::communication::client_event::Message;
 use crate::communication::serialization::LineReader;
 
 pub type PeerIdType = u32;

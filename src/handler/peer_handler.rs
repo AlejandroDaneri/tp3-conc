@@ -65,8 +65,25 @@ impl PeerProcessor {
     }
 
     fn handle_peer_message(&self, message: Message, peer_id: PeerIdType) {
-        if let Message::Leader(message) = message {
-            match message {
+        match message {
+            Message::Common(inner) => match self.connected_peers.get(&peer_id) {
+                Some(peer) => {
+                    let sent = peer.send_message(Message::Common(inner));
+                    if sent.is_err() {
+                        println!("Peer {} disconnected!", peer_id);
+                        let message = LeaderMessage::PeerDisconnected;
+                        self.leader_handler_sender.send((message, peer_id));
+                    }
+                }
+                None => {
+                    if peer_id != self.own_id {
+                        let message = LeaderMessage::PeerDisconnected;
+                        self.leader_handler_sender.send((message, peer_id));
+                    }
+                    //TODO: aca llega {PH: Processing event: PeerMessage { message: Common(ErrorResponse(LockNotAcquiredError)), peer_id: 39246 }}
+                }
+            },
+            Message::Leader(message) => match message {
                 LeaderMessage::LeaderElectionRequest { .. } => {
                     self.connected_peers
                         .iter()
@@ -94,20 +111,15 @@ impl PeerProcessor {
                     }
                 }
                 _ => unreachable!(),
-            }
-        } else {
-            match self.connected_peers.get(&peer_id) {
-                Some(peer) => {
-                    let sent = peer.send_message(message);
+            },
+            Message::Lock(inner) => {
+                if let Some(peer) = self.connected_peers.get(&peer_id) {
+                    let sent = peer.send_message(Message::Lock(inner));
                     if sent.is_err() {
                         println!("Peer {} disconnected!", peer_id);
                         let message = LeaderMessage::PeerDisconnected;
                         self.leader_handler_sender.send((message, peer_id));
                     }
-                }
-                None => {
-                    let message = LeaderMessage::PeerDisconnected;
-                    self.leader_handler_sender.send((message, peer_id));
                 }
             }
         }
