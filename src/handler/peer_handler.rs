@@ -69,6 +69,13 @@ impl PeerProcessor {
 
     fn handle_peer_message(&self, message: Message, peer_id: PeerIdType) {
         match message {
+            Message::Common(ClientMessage::BroadcastBlockchain { blockchain }) => {
+                for (_, peer) in self.connected_peers.iter() {
+                    peer.send_message(Message::Common(ClientMessage::ReadBlockchainResponse {
+                        blockchain: blockchain.clone(),
+                    }));
+                }
+            }
             Message::Common(inner) => match self.connected_peers.get(&peer_id) {
                 Some(peer) => {
                     let sent = peer.send_message(Message::Common(inner));
