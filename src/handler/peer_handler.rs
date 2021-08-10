@@ -1,5 +1,5 @@
 use crate::blockchain::peer::{Peer, PeerIdType};
-use crate::communication::client_event::{ClientEvent, LeaderMessage, Message, ClientMessage};
+use crate::communication::client_event::{ClientEvent, LeaderMessage, Message};
 use std::collections::HashMap;
 use std::io;
 use std::io::{BufRead, BufReader, Write};
@@ -66,31 +66,22 @@ impl PeerProcessor {
 
     fn handle_peer_message(&self, message: Message, peer_id: PeerIdType) {
         match message {
-            Message::Common(message) => match self.connected_peers.get(&peer_id) {
+            Message::Common(inner) => match self.connected_peers.get(&peer_id) {
                 Some(peer) => {
-                    let sent = peer.write_message(message);
+                    let sent = peer.send_message(Message::Common(inner));
                     if sent.is_err() {
                         println!("Peer {} disconnected!", peer_id);
                         let message = LeaderMessage::PeerDisconnected;
                         self.leader_handler_sender.send((message, peer_id));
                     }
                 }
-                None => match message {
-                    ClientMessage::BroadcastBlockchain { blockchain } => {
-                        for (_pid, peer) in self.connected_peers.iter() {
-                            peer.write_message(ClientMessage::ReadBlockchainResponse {
-                                blockchain: blockchain.clone(),
-                            });
-                        }
+                None => {
+                    if peer_id != self.own_id {
+                        let message = LeaderMessage::PeerDisconnected;
+                        self.leader_handler_sender.send((message, peer_id));
                     }
-                    _ => {
-                        if peer_id != self.own_id {
-                            let message = LeaderMessage::PeerDisconnected;
-                            self.leader_handler_sender.send((message, peer_id));
-                        }
-                        //TODO: aca llega {PH: Processing event: PeerMessage { message: Common(ErrorResponse(LockNotAcquiredError)), peer_id: 39246 }}
-                    }
-                },
+                    //TODO: aca llega {PH: Processing event: PeerMessage { message: Common(ErrorResponse(LockNotAcquiredError)), peer_id: 39246 }}
+                }
             },
             Message::Leader(message) => match message {
                 LeaderMessage::LeaderElectionRequest { .. } => {
@@ -99,14 +90,15 @@ impl PeerProcessor {
                         .filter(|(&peer_id, _)| peer_id > self.own_id)
                         .for_each(|(peer_id, peer)| {
                             println!("Pidiendo ser lider a {}", peer_id);
-                            peer.write_message_leader(LeaderMessage::LeaderElectionRequest {
+                            let msg = Message::Leader(LeaderMessage::LeaderElectionRequest {
                                 timestamp: SystemTime::now(),
                             });
+                            peer.send_message(msg);
                         });
                 }
                 LeaderMessage::OkMessage {} => {
                     if let Some(peer) = self.connected_peers.get(&peer_id) {
-                        let sent = peer.write_message_leader(message);
+                        let sent = peer.send_message(Message::Leader(message));
                         if sent.is_err() {
                             println!("Peer {} disconnected!", peer_id);
                         }
@@ -115,11 +107,21 @@ impl PeerProcessor {
                 LeaderMessage::VictoryMessage {} => {
                     for (peer_id, peer) in self.connected_peers.iter() {
                         println!("Send victory to {}!", peer_id);
-                        peer.write_message_leader(LeaderMessage::VictoryMessage {});
+                        peer.send_message(Message::Leader(LeaderMessage::VictoryMessage {}));
                     }
                 }
                 _ => unreachable!(),
             },
+            Message::Lock(inner) => {
+                if let Some(peer) = self.connected_peers.get(&peer_id) {
+                    let sent = peer.send_message(Message::Lock(inner));
+                    if sent.is_err() {
+                        println!("Peer {} disconnected!", peer_id);
+                        let message = LeaderMessage::PeerDisconnected;
+                        self.leader_handler_sender.send((message, peer_id));
+                    }
+                }
+            }
         }
     }
 }

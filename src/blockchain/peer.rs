@@ -4,8 +4,8 @@ use std::net::TcpStream;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 
+use crate::communication::client_event::ClientEvent;
 use crate::communication::client_event::Message;
-use crate::communication::client_event::{ClientEvent, ClientMessage, LeaderMessage};
 use crate::communication::serialization::LineReader;
 
 pub type PeerIdType = u32;
@@ -64,25 +64,10 @@ impl Peer {
         Ok(())
     }
 
-    pub fn write_message(&self, msg: ClientMessage) -> io::Result<()> {
-        let msg = Message::Common(msg);
+    pub fn send_message(&self, msg: Message) -> io::Result<()> {
         match &self.sender {
             Some(sender) => sender
                 .send(ClientEvent::UserInput { message: msg })
-                .map_err(|_| {
-                    io::Error::new(io::ErrorKind::Other, "Error while sending message to peer")
-                }),
-            None => unreachable!(),
-        }
-    }
-
-    pub fn write_message_leader(&self, msg: LeaderMessage) -> io::Result<()> {
-        match &self.sender {
-            Some(sender) => sender
-                .send(ClientEvent::PeerMessage {
-                    message: Message::Leader(msg),
-                    peer_id: self.id,
-                })
                 .map_err(|_| {
                     io::Error::new(io::ErrorKind::Other, "Error while sending message to peer")
                 }),

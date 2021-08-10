@@ -3,8 +3,8 @@ use std::io::Read;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 
-use crate::communication::client_event::Message;
 use crate::communication::client_event::{ClientEvent, ClientMessage, ErrorMessage};
+use crate::communication::client_event::{LockMessage, Message};
 use crate::communication::commands::UserCommand;
 use crate::communication::serialization::LineReader;
 
@@ -92,11 +92,11 @@ impl InputProcessor {
             match response {
                 ClientMessage::ErrorResponse(ErrorMessage::LockNotAcquiredError) => {
                     let event = ClientEvent::UserInput {
-                        message: Message::Common(ClientMessage::LockRequest),
+                        message: Message::Lock(LockMessage::Acquire),
                     };
                     self.message_sender.send(event);
                 }
-                ClientMessage::LockResponse { acquired: true } => {
+                ClientMessage::LockResponse(true) => {
                     println!("Lock acquired! retrying... ");
                     let event = ClientEvent::UserInput {
                         message: message.clone(),

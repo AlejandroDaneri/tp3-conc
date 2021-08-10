@@ -6,12 +6,12 @@ use std::{io, sync::mpsc::Receiver, thread};
 use crate::blockchain::peer::PeerIdType;
 use crate::communication::client_event::{ClientEvent, ClientMessage, LeaderMessage, Message};
 
+const LEADER_ELECTION_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[derive(Debug)]
 pub struct LeaderHandler {
     thread_handle: Option<thread::JoinHandle<()>>,
 }
-
-const LEADER_ELECTION_TIMEOUT: Duration = Duration::from_secs(2);
 
 struct LeaderProcessor {
     peer_handler_sender: Sender<ClientEvent>,
