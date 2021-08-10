@@ -72,7 +72,6 @@ impl LockProcessor {
                 acquired = false
             }
             let message = Message::Common(ClientMessage::LockResponse(acquired));
-            println!("Send lock ok...");
             self.peer_handler_sender
                 .send(ClientEvent::PeerMessage { message, peer_id });
         }

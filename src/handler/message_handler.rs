@@ -126,8 +126,9 @@ impl MessageProcessor {
             }
             ClientMessage::WriteBlockchainRequest { transaction } => {
                 if let Ok(guard) = self.lock_notify.0.lock() {
-                    let locked = guard.is_owned_by(peer_id);
-                    if !locked {
+                    let owned = guard.is_owned_by(peer_id);
+                    println!("WriteBlockchain... lock owned? {}", owned);
+                    if !owned {
                         return Some(ClientMessage::ErrorResponse(
                             ErrorMessage::LockNotAcquiredError,
                         ));

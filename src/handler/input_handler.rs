@@ -89,6 +89,7 @@ impl InputProcessor {
         loop {
             println!("Waiting response...");
             response = self.output_receiver.recv().unwrap();
+            println!("---- input_handler response -> {:?}", response);
             match response {
                 ClientMessage::ErrorResponse(ErrorMessage::LockNotAcquiredError) => {
                     let event = ClientEvent::UserInput {

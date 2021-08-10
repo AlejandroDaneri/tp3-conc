@@ -45,6 +45,7 @@ impl Client {
             peer_handler_receiver,
             sender.clone(),
             leader_handler_sender.clone(),
+            output_sender.clone(),
         );
         let leader_notify = Arc::new((Mutex::new(true), Condvar::new()));
         let leader_handler = LeaderHandler::new(
@@ -124,6 +125,7 @@ impl Client {
                     }
                     Message::Lock(message) => match message {
                         LockMessage::Acquire => {
+                            println!("acquire to {}", peer_id);
                             lock_sender.send(peer_id).map_err(|_| {
                                 io::Error::new(io::ErrorKind::Other, "lock sender error")
                             })?;
@@ -157,7 +159,7 @@ impl Client {
                         })?;
                     }
                     Message::Lock(message) => {
-                        lock_sender.send(0).map_err(|_| {
+                        lock_sender.send(self.id).map_err(|_| {
                             io::Error::new(io::ErrorKind::Other, "lock sender error")
                         })?;
                     }

@@ -1,5 +1,5 @@
 use crate::blockchain::peer::{Peer, PeerIdType};
-use crate::communication::client_event::{ClientEvent, LeaderMessage, Message};
+use crate::communication::client_event::{ClientEvent, ClientMessage, LeaderMessage, Message};
 use std::collections::HashMap;
 use std::io;
 use std::io::{BufRead, BufReader, Write};
@@ -20,6 +20,7 @@ pub struct PeerProcessor {
     sender: Sender<ClientEvent>,
     receiver: Receiver<ClientEvent>,
     leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
+    output_sender: Sender<ClientMessage>,
 }
 
 impl PeerProcessor {
@@ -29,6 +30,7 @@ impl PeerProcessor {
         sender: Sender<ClientEvent>,
         receiver: Receiver<ClientEvent>,
         leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
+        output_sender: Sender<ClientMessage>,
     ) -> Self {
         Self {
             connected_peers,
@@ -36,6 +38,7 @@ impl PeerProcessor {
             sender,
             receiver,
             leader_handler_sender,
+            output_sender,
         }
     }
     pub fn process(&mut self) -> io::Result<()> {
@@ -76,11 +79,13 @@ impl PeerProcessor {
                     }
                 }
                 None => {
+                    println!("[{}] Peer not found: {}", self.own_id, peer_id);
                     if peer_id != self.own_id {
                         let message = LeaderMessage::PeerDisconnected;
                         self.leader_handler_sender.send((message, peer_id));
+                    } else {
+                        self.output_sender.send(inner);
                     }
-                    //TODO: aca llega {PH: Processing event: PeerMessage { message: Common(ErrorResponse(LockNotAcquiredError)), peer_id: 39246 }}
                 }
             },
             Message::Leader(message) => match message {
@@ -131,15 +136,17 @@ impl PeerHandler {
         request_receiver: Receiver<ClientEvent>,
         response_sender: Sender<ClientEvent>,
         leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
+        output_sender: Sender<ClientMessage>,
     ) -> Self {
-        let hash = HashMap::new();
+        let connected_peers = HashMap::new();
         let thread_handle = thread::spawn(move || {
             PeerHandler::run(
                 own_id,
                 request_receiver,
                 response_sender,
                 leader_handler_sender,
-                hash,
+                output_sender,
+                connected_peers,
             )
         });
         PeerHandler {
@@ -152,6 +159,7 @@ impl PeerHandler {
         receiver: Receiver<ClientEvent>,
         sender: Sender<ClientEvent>,
         leader_handler_sender: Sender<(LeaderMessage, PeerIdType)>,
+        output_sender: Sender<ClientMessage>,
         connected_peers: HashMap<u32, Peer>,
     ) -> io::Result<()> {
         let mut processor = PeerProcessor::new(
@@ -160,6 +168,7 @@ impl PeerHandler {
             sender,
             receiver,
             leader_handler_sender,
+            output_sender,
         );
         processor.process()
     }
