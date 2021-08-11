@@ -102,9 +102,14 @@ impl InputProcessor {
                     };
                     self.message_sender.send(event).ok();
                 }
-                ClientMessage::ReadBlockchainResponse { .. }
-                | ClientMessage::WriteBlockchainResponse { .. } => {
+                ClientMessage::ReadBlockchainResponse { .. } => {
                     break;
+                }
+                ClientMessage::WriteBlockchainResponse { .. } => {
+                    let event = ClientEvent::UserInput {
+                        message: Message::Lock(LockMessage::Release),
+                    };
+                    self.message_sender.send(event).ok();
                 }
                 ClientMessage::ReadBlockchainRequest => todo!(),
                 ClientMessage::WriteBlockchainRequest { transaction: _ } => todo!(),
