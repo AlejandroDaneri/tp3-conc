@@ -54,7 +54,7 @@ Debido a que el dispatcher de mensajes trabaja en un hilo propio, el modelo del 
 
 
 ## Diagrama de implementacion
-<PONER JPG ACA>
+![Threads.jpg](threads)
   
 ## Modo de uso
 
