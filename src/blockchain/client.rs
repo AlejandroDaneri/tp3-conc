@@ -158,7 +158,7 @@ impl Client {
                             io::Error::new(io::ErrorKind::Other, "leader sender error")
                         })?;
                     }
-                    Message::Lock(message) => {
+                    Message::Lock(_message) => {
                         lock_sender.send(self.id).map_err(|_| {
                             io::Error::new(io::ErrorKind::Other, "lock sender error")
                         })?;

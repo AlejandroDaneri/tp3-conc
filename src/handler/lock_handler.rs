@@ -1,7 +1,6 @@
 use crate::blockchain::lock::{CentralizedLock, Lock, LockResult};
 use crate::blockchain::peer::PeerIdType;
 use crate::communication::client_event::{ClientEvent, ClientMessage, Message};
-use std::io;
 use std::ops::Deref;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
@@ -25,7 +24,7 @@ impl LockHandler {
         lock_notify: Arc<(Mutex<CentralizedLock>, Condvar)>,
     ) -> Self {
         let thread_handle = Some(thread::spawn(move || {
-            LockHandler::run(lock_receiver, peer_handler_sender, lock_notify).unwrap();
+            LockHandler::run(lock_receiver, peer_handler_sender, lock_notify);
         }));
         LockHandler { thread_handle }
     }
@@ -34,10 +33,9 @@ impl LockHandler {
         message_receiver: Receiver<PeerIdType>,
         peer_handler_sender: Sender<ClientEvent>,
         lock_notify: Arc<(Mutex<CentralizedLock>, Condvar)>,
-    ) -> io::Result<()> {
+    ) {
         let mut processor = LockProcessor::new(message_receiver, peer_handler_sender, lock_notify);
         processor.run();
-        Ok(())
     }
 }
 
@@ -73,7 +71,13 @@ impl LockProcessor {
             }
             let message = Message::Common(ClientMessage::LockResponse(acquired));
             self.peer_handler_sender
-                .send(ClientEvent::PeerMessage { message, peer_id });
+                .send(ClientEvent::PeerMessage { message, peer_id })
+                .ok();
         }
+    }
+}
+impl Drop for LockHandler {
+    fn drop(&mut self) {
+        let _ = self.thread_handle.take().unwrap().join();
     }
 }
