@@ -19,7 +19,6 @@ impl ConnectionHandler {
     }
 
     fn run(client_sender: Sender<ClientEvent>, port_from: u16, port_to: u16) -> io::Result<()> {
-        // TODO? listener no bloqueante para poder salir del incoming
         let listener = ConnectionHandler::listen_in_range(port_from, port_to)?;
         let own_port: u16 = listener.local_addr()?.port();
         ConnectionHandler::do_broadcasting(port_from, port_to, &client_sender, own_port)?;

@@ -176,10 +176,7 @@ impl LeaderMessage {
                 unreachable!()
             }
             LeaderMessage::OkMessage {} => "ok\n".to_owned(),
-            LeaderMessage::VictoryMessage {} => {
-                // TODO: usar timestamp
-                "coordinator\n".to_owned()
-            }
+            LeaderMessage::VictoryMessage {} => "coordinator\n".to_owned(),
             LeaderMessage::PeerDisconnected => unreachable!(),
             LeaderMessage::SendLeaderId => unreachable!(),
             LeaderMessage::BroadcastBlockchain { blockchain: _ } => unreachable!(),
