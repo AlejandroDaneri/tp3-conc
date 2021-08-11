@@ -131,7 +131,13 @@ impl Client {
                             })?;
                         }
                         LockMessage::Release => {
+                            println!("TODO: IMPLEMENTAR RELEASE");
+                            println!("TODO: IMPLEMENTAR RELEASE");
+                            println!("TODO: IMPLEMENTAR RELEASE");
+                            println!("TODO: IMPLEMENTAR RELEASE");
+                            println!("TODO: IMPLEMENTAR RELEASE");
                             let (_, cv) = lock_notify.deref();
+
                             cv.notify_all();
                         }
                     },
