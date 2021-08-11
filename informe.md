@@ -30,11 +30,9 @@ Se ha implementado un algoritmo en el cual un nodo que entra a la red puede dete
 
 Para la parte de la elección de un nodo _líder_ o _coordinador_, decidimos implementarlo utilizando un algoritmo **Bully**, en donde la elección del coordinador se basa en un criterio simple de que el nodo con el numero de proceso mayor en la red es quien será el _coordinador_.
 
-Dicho algoritmo se ejecuta ante la presencia de los siguiente eventos:
+Dicho algoritmo se ejecuta cuando un nodo detecta que el coordinador actual "esta caído". Si un nodo, al enviarle algún mensaje al líder o coordinador, no recibe respuesta en un tiempo predeterminado, entonces considerará al mismo como desconectado y se procederá a la elección del líder nuevamente.
 
-- SI NO HAY NINGÚN OTRO EVENTO AL FINAL CORREGIR ACÁ
-
-- Cuando un nodo detecta que el coordinador actual "esta caído". Si un nodo, al enviarle algún mensaje al líder o coordinador, no recibe respuesta en un tiempo predeterminado, entonces considerará al mismo como desconectado y se procederá a la elección del líder nuevamente.
+A su vez cada nodo nuevo que ingresa a la red recibe el lider actual cuando se conecta
 
 ### Implementación
 
