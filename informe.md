@@ -52,6 +52,10 @@ El lock centralizado se realiza utilizando el nodo coordinador. Cuando un nodo q
 
 Debido a que el dispatcher de mensajes trabaja en un hilo propio, el modelo del lock también corre en un hilo separado del dispatcher, de forma que no bloquee mensajes entrantes de los nodos conectados.
 
+
+## Diagrama de implementacion
+<PONER JPG ACA>
+  
 ## Modo de uso
 
 Para iniciar el proceso y conectar un nuevo nodo a la red bastará con ejecutar
