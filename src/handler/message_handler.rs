@@ -155,7 +155,7 @@ impl MessageProcessor {
                 None
             }
             ClientMessage::LockResponse { .. } => {
-                print!("Obtuve lock? {:?}", message);
+                println!("Obtuve lock? {:?}", message);
                 self.output_sender.send(message).ok()?;
                 None
             }

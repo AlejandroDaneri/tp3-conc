@@ -106,13 +106,25 @@ impl InputProcessor {
                 | ClientMessage::WriteBlockchainResponse { .. } => {
                     break;
                 }
-                _ => {
+                ClientMessage::ReadBlockchainRequest => todo!(),
+                ClientMessage::WriteBlockchainRequest { transaction: _ } => todo!(),
+                ClientMessage::LeaderElectionFinished => {
                     let event = ClientEvent::UserInput {
                         message: message.clone(),
                     };
                     self.message_sender.send(event).ok();
                     println!("Retrying after {:?}", response);
                 }
+                ClientMessage::BroadcastBlockchain { blockchain: _ } => unreachable!(),
+                ClientMessage::LockResponse(_acquired) => unreachable!(),
+                ClientMessage::ErrorResponse(_error) => unreachable!(),
+                // _ => {
+                //     let event = ClientEvent::UserInput {
+                //         message: message.clone(),
+                //     };
+                //     self.message_sender.send(event).ok();
+                //     println!("Retrying after {:?}", response);
+                // }
             }
         }
         println!("Response: {:?}", response);

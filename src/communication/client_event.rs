@@ -105,7 +105,9 @@ impl Serializable for ClientMessage {
             ClientMessage::ErrorResponse(ErrorMessage::LockNotAcquiredError) => {
                 "error not_locked\n".to_owned()
             }
-            ClientMessage::LeaderElectionFinished {} => "info leader_election_finished".to_owned(),
+            ClientMessage::LeaderElectionFinished {} => {
+                "info leader_election_finished\n".to_owned()
+            }
             ClientMessage::BroadcastBlockchain { blockchain } => {
                 format!("blockchain {}\n", blockchain.serialize())
             }
@@ -212,8 +214,8 @@ pub enum LockMessage {
 impl Serializable for LockMessage {
     fn serialize(&self) -> String {
         match self {
-            LockMessage::Acquire => "lock_acquire".to_owned(),
-            LockMessage::Release => "lock_release".to_owned(),
+            LockMessage::Acquire => "lock_acquire\n".to_owned(),
+            LockMessage::Release => "lock_release\n".to_owned(),
         }
     }
 

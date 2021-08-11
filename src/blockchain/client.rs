@@ -158,10 +158,21 @@ impl Client {
                             io::Error::new(io::ErrorKind::Other, "leader sender error")
                         })?;
                     }
-                    Message::Lock(_message) => {
-                        lock_sender.send(self.id).map_err(|_| {
-                            io::Error::new(io::ErrorKind::Other, "lock sender error")
-                        })?;
+                    Message::Lock(message) => {
+                        let leader_id = Client::retrieve_leader(&leader_sender);
+                        if leader_id == self.id {
+                            lock_sender.send(self.id).map_err(|_| {
+                                io::Error::new(io::ErrorKind::Other, "lock sender error")
+                            })?;
+                        } else {
+                            let event = ClientEvent::PeerMessage {
+                                message: Message::Lock(message.clone()),
+                                peer_id: leader_id,
+                            };
+                            peer_sender.send(event).map_err(|_| {
+                                io::Error::new(io::ErrorKind::Other, "peer sender error")
+                            })?;
+                        }
                     }
                 },
             }
