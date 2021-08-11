@@ -135,7 +135,7 @@ impl MessageProcessor {
                     }
                 }
                 if self.is_leader() {
-                    let _valid = self.blockchain.validate(&transaction); //esto deberia ser la transaccion que recibe cuando devuelve el lock
+                    let _valid = self.blockchain.validate(&transaction);
                     self.blockchain.add_transaction(transaction);
                     self.leader_handler_sender
                         .send((

@@ -195,7 +195,7 @@ impl LeaderMessage {
     }
 
     fn parse_leader_req(tokens: &mut dyn Iterator<Item = &str>) -> Option<LeaderMessage> {
-        let _timestamp_str = tokens.next(); //TODO: pasar a timestamp si lo vamos a usar
+        let _timestamp_str = tokens.next();
         Some(LeaderMessage::LeaderElectionRequest {
             timestamp: SystemTime::now(),
         })
