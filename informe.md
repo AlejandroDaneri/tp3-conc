@@ -48,6 +48,10 @@ Cuando un proceso de líder se encuentre en curso, no podrán seguirse procesand
 
 ### Implementación
 
+El lock centralizado se realiza utilizando el nodo coordinador. Cuando un nodo quiere realizar una escritura en la blockchain, primero envía un mensaje de lock al nodo coordinador. Si el pedido fue exitoso, el coordinador le envía `lock_acquired` al nodo cliente. Luego este puede enviar el mensaje de escritura con la transacción a guardar. Si otro nodo intenta pedir el lock este será encolado durante `LOCK_TIMEOUT` segundos. Si se ejecutó un _release_ (por el nodo que adquirió el lock previamente), se desencola el nodo que pidió el lock y se le envía el mensaje de `lock_acquired`. En contrapuesta, si el nodo encolado hizo "time out", se le devuelve al cliente que falló la adquisición del lock, teniendo que reintentar el pedido del lock. De esta forma evitamos un "busy wait" distribuido.
+
+Debido a que el dispatcher de mensajes trabaja en un hilo propio, el modelo del lock también corre en un hilo separado del dispatcher, de forma que no bloquee mensajes entrantes de los nodos conectados.
+
 ## Modo de uso
 
 Para iniciar el proceso y conectar un nuevo nodo a la red bastará con ejecutar
