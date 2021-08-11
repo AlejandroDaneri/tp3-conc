@@ -1,4 +1,3 @@
-use std::io;
 use std::io::Read;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
@@ -31,7 +30,7 @@ impl InputHandler {
         output_receiver: Receiver<ClientMessage>,
     ) {
         let processor = InputProcessor::new(message_sender, output_receiver);
-        processor.run(source).unwrap();
+        processor.run(source);
     }
 }
 
@@ -57,13 +56,12 @@ impl InputProcessor {
         }
     }
 
-    fn run<R: Read>(&self, source: R) -> io::Result<()> {
+    fn run<R: Read>(&self, source: R) {
         let command_reader = LineReader::<R, UserCommand>::new(source);
         for command in command_reader {
             self.handle_command(&command);
         }
         println!("Saliendo de la aplicación");
-        Ok(())
     }
 
     fn handle_command(&self, command: &UserCommand) {
@@ -84,7 +82,7 @@ impl InputProcessor {
         let event = ClientEvent::UserInput {
             message: message.clone(),
         };
-        self.message_sender.send(event);
+        self.message_sender.send(event).ok();
         let mut response;
         loop {
             println!("Waiting response...");
@@ -95,14 +93,14 @@ impl InputProcessor {
                     let event = ClientEvent::UserInput {
                         message: Message::Lock(LockMessage::Acquire),
                     };
-                    self.message_sender.send(event);
+                    self.message_sender.send(event).ok();
                 }
                 ClientMessage::LockResponse(true) => {
                     println!("Lock acquired! retrying... ");
                     let event = ClientEvent::UserInput {
                         message: message.clone(),
                     };
-                    self.message_sender.send(event);
+                    self.message_sender.send(event).ok();
                 }
                 ClientMessage::ReadBlockchainResponse { .. }
                 | ClientMessage::WriteBlockchainResponse { .. } => {
@@ -112,7 +110,7 @@ impl InputProcessor {
                     let event = ClientEvent::UserInput {
                         message: message.clone(),
                     };
-                    self.message_sender.send(event);
+                    self.message_sender.send(event).ok();
                     println!("Retrying after {:?}", response);
                 }
             }

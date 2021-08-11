@@ -121,7 +121,7 @@ impl MessageProcessor {
             }
             ClientMessage::ReadBlockchainResponse { blockchain } => {
                 self.blockchain = blockchain;
-                self.output_sender.send(redirect);
+                self.output_sender.send(redirect).ok()?;
                 None
             }
             ClientMessage::WriteBlockchainRequest { transaction } => {
@@ -137,32 +137,34 @@ impl MessageProcessor {
                 if self.is_leader() {
                     let _valid = self.blockchain.validate(&transaction); //esto deberia ser la transaccion que recibe cuando devuelve el lock
                     self.blockchain.add_transaction(transaction);
-                    self.leader_handler_sender.send((
-                        LeaderMessage::BroadcastBlockchain {
-                            blockchain: self.blockchain.clone(),
-                        },
-                        self.id,
-                    ));
+                    self.leader_handler_sender
+                        .send((
+                            LeaderMessage::BroadcastBlockchain {
+                                blockchain: self.blockchain.clone(),
+                            },
+                            self.id,
+                        ))
+                        .ok()?;
                     Some(ClientMessage::WriteBlockchainResponse {})
                 } else {
                     Some(ClientMessage::ErrorResponse(ErrorMessage::NotLeaderError))
                 }
             }
             ClientMessage::WriteBlockchainResponse {} => {
-                self.output_sender.send(message);
+                self.output_sender.send(message).ok()?;
                 None
             }
             ClientMessage::LockResponse { .. } => {
                 print!("Obtuve lock? {:?}", message);
-                self.output_sender.send(message);
+                self.output_sender.send(message).ok()?;
                 None
             }
             ClientMessage::ErrorResponse(..) => {
-                self.output_sender.send(message);
+                self.output_sender.send(message).ok()?;
                 None
             }
             ClientMessage::LeaderElectionFinished {} => {
-                self.output_sender.send(message);
+                self.output_sender.send(message).ok()?;
                 None
             }
             ClientMessage::BroadcastBlockchain { blockchain } => {

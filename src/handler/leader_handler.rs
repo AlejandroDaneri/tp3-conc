@@ -75,10 +75,12 @@ impl LeaderProcessor {
 
     fn notify_victory(&self) {
         let message = Message::Leader(LeaderMessage::VictoryMessage);
-        self.peer_handler_sender.send(ClientEvent::PeerMessage {
-            message,
-            peer_id: self.own_id,
-        });
+        self.peer_handler_sender
+            .send(ClientEvent::PeerMessage {
+                message,
+                peer_id: self.own_id,
+            })
+            .ok();
     }
     pub fn run(
         &mut self,
@@ -166,17 +168,21 @@ impl LeaderProcessor {
             }
             LeaderMessage::SendLeaderId => {
                 if self.current_leader == self.own_id {
-                    self.peer_handler_sender.send(ClientEvent::PeerMessage {
-                        message: Message::Leader(LeaderMessage::VictoryMessage),
-                        peer_id,
-                    });
+                    self.peer_handler_sender
+                        .send(ClientEvent::PeerMessage {
+                            message: Message::Leader(LeaderMessage::VictoryMessage),
+                            peer_id,
+                        })
+                        .ok();
                 }
             }
             LeaderMessage::BroadcastBlockchain { blockchain } => {
-                self.peer_handler_sender.send(ClientEvent::PeerMessage {
-                    peer_id: self.own_id,
-                    message: Message::Common(ClientMessage::BroadcastBlockchain { blockchain }),
-                });
+                self.peer_handler_sender
+                    .send(ClientEvent::PeerMessage {
+                        peer_id: self.own_id,
+                        message: Message::Common(ClientMessage::BroadcastBlockchain { blockchain }),
+                    })
+                    .ok();
             }
         }
     }
@@ -191,18 +197,21 @@ impl LeaderProcessor {
             });
             self.election_by_user = true;
             self.peer_handler_sender
-                .send(ClientEvent::PeerMessage { message, peer_id });
+                .send(ClientEvent::PeerMessage { message, peer_id })
+                .ok();
         } else {
             let message = Message::Leader(LeaderMessage::OkMessage);
             println!("Mando a peer {:?}", message);
             self.peer_handler_sender
-                .send(ClientEvent::PeerMessage { message, peer_id });
+                .send(ClientEvent::PeerMessage { message, peer_id })
+                .ok();
             let message = Message::Leader(LeaderMessage::LeaderElectionRequest {
                 timestamp: SystemTime::now(),
             });
             println!("Mando LE");
             self.peer_handler_sender
-                .send(ClientEvent::PeerMessage { message, peer_id });
+                .send(ClientEvent::PeerMessage { message, peer_id })
+                .ok();
         };
     }
 }
