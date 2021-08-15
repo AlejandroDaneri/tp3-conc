@@ -1,11 +1,10 @@
-use std::io::Read;
-use std::sync::mpsc::{Receiver, Sender};
-use std::thread;
-
 use crate::communication::client_event::{ClientEvent, ClientMessage, ErrorMessage};
 use crate::communication::client_event::{LockMessage, Message};
 use crate::communication::commands::UserCommand;
 use crate::communication::serialization::LineReader;
+use std::io::Read;
+use std::sync::mpsc::{Receiver, Sender};
+use std::thread;
 
 #[derive(Debug)]
 pub struct InputHandler {
@@ -55,76 +54,92 @@ impl InputProcessor {
             output_receiver,
         }
     }
-
     fn run<R: Read>(&self, source: R) {
-        let command_reader = LineReader::<R, UserCommand>::new(source);
-        for command in command_reader {
-            self.handle_command(&command);
+        let mut command_reader = LineReader::<R, UserCommand>::new(source);
+        let mut status = ClientStatus::Idle;
+        let mut current_command = None;
+        loop {
+            match status {
+                ClientStatus::Idle => {
+                    println!("Ingrese un comando");
+                    current_command = command_reader.next();
+                    status = ClientStatus::SendCommand;
+                }
+                ClientStatus::SendCommand => {
+                    let message;
+                    match &current_command {
+                        Some(UserCommand::ReadBlockchain) => {
+                            message = Message::Common(ClientMessage::ReadBlockchainRequest)
+                        }
+                        Some(UserCommand::WriteBlockchain(transaction)) => {
+                            message = Message::Common(ClientMessage::WriteBlockchainRequest {
+                                transaction: transaction.clone(),
+                            })
+                        }
+                        _ => {
+                            break;
+                        }
+                    }
+                    let event = ClientEvent::UserInput { message };
+                    self.message_sender.send(event).ok();
+                    status = ClientStatus::WaitingReply;
+                }
+                ClientStatus::WaitingReply => {
+                    println!("Waiting reply");
+                    let response = self.output_receiver.recv().unwrap();
+                    println!("---- input_handler response -> {:?}", response);
+                    match response {
+                        ClientMessage::ErrorResponse(ErrorMessage::LockNotAcquiredError) => {
+                            let event = ClientEvent::UserInput {
+                                message: Message::Lock(LockMessage::Acquire),
+                            };
+                            self.message_sender.send(event).ok();
+                        }
+                        ClientMessage::LockResponse(true) => {
+                            status = ClientStatus::SendCommand;
+                        }
+                        ClientMessage::ReadBlockchainResponse { blockchain } => {
+                            if let Some(UserCommand::ReadBlockchain) = current_command {
+                                println!("Blockchain: {}", blockchain);
+                                status = ClientStatus::Idle;
+                            }
+                        }
+                        ClientMessage::WriteBlockchainResponse {} => {
+                            if let Some(UserCommand::WriteBlockchain(_)) = current_command {
+                                println!("Write blockchain exitoso");
+                                status = ClientStatus::Idle;
+                            }
+                            let event = ClientEvent::UserInput {
+                                message: Message::Lock(LockMessage::Release),
+                            };
+                            self.message_sender.send(event).ok();
+                        }
+                        ClientMessage::ReadBlockchainRequest => todo!(),
+                        ClientMessage::WriteBlockchainRequest { transaction: _ } => todo!(),
+                        ClientMessage::LeaderElectionFinished => {
+                            status = ClientStatus::SendCommand;
+                        }
+                        ClientMessage::BroadcastBlockchain { blockchain: _ } => {}
+                        ClientMessage::LockResponse(_acquired) => {
+                            let event = ClientEvent::UserInput {
+                                message: Message::Lock(LockMessage::Acquire),
+                            };
+                            self.message_sender.send(event).ok();
+                        }
+                        ClientMessage::ErrorResponse(error) => {
+                            println!("Error: {:?}", error);
+                            println!("Retrying....");
+                            status = ClientStatus::SendCommand;
+                        }
+                    }
+                }
+            }
         }
         println!("Saliendo de la aplicación");
     }
-
-    fn handle_command(&self, command: &UserCommand) {
-        let message;
-        match command {
-            UserCommand::ReadBlockchain => {
-                message = Message::Common(ClientMessage::ReadBlockchainRequest)
-            }
-            UserCommand::WriteBlockchain(transaction) => {
-                message = Message::Common(ClientMessage::WriteBlockchainRequest {
-                    transaction: transaction.clone(),
-                })
-            }
-            _ => {
-                return;
-            }
-        }
-        let event = ClientEvent::UserInput {
-            message: message.clone(),
-        };
-        self.message_sender.send(event).ok();
-        let mut response;
-        loop {
-            println!("Waiting response...");
-            response = self.output_receiver.recv().unwrap();
-            println!("---- input_handler response -> {:?}", response);
-            match response {
-                ClientMessage::ErrorResponse(ErrorMessage::LockNotAcquiredError) => {
-                    let event = ClientEvent::UserInput {
-                        message: Message::Lock(LockMessage::Acquire),
-                    };
-                    self.message_sender.send(event).ok();
-                }
-                ClientMessage::LockResponse(true) => {
-                    println!("Lock acquired! retrying... ");
-                    let event = ClientEvent::UserInput {
-                        message: message.clone(),
-                    };
-                    self.message_sender.send(event).ok();
-                }
-                ClientMessage::ReadBlockchainResponse { .. } => {
-                    break;
-                }
-                ClientMessage::WriteBlockchainResponse { .. } => {
-                    let event = ClientEvent::UserInput {
-                        message: Message::Lock(LockMessage::Release),
-                    };
-                    self.message_sender.send(event).ok();
-                }
-                ClientMessage::ReadBlockchainRequest => todo!(),
-                ClientMessage::WriteBlockchainRequest { transaction: _ } => todo!(),
-                ClientMessage::LeaderElectionFinished => {
-                    let event = ClientEvent::UserInput {
-                        message: message.clone(),
-                    };
-                    self.message_sender.send(event).ok();
-                    println!("Retrying after {:?}", response);
-                }
-                ClientMessage::BroadcastBlockchain { blockchain: _ } => {}
-                ClientMessage::LockResponse(_acquired) => {}
-                ClientMessage::ErrorResponse(_error) => {}
-            }
-        }
-        println!("Response: {:?}", response);
-    }
+}
+enum ClientStatus {
+    Idle,
+    SendCommand,
+    WaitingReply,
 }
