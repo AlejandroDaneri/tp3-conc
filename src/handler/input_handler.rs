@@ -85,9 +85,9 @@ impl InputProcessor {
                     status = ClientStatus::WaitingReply;
                 }
                 ClientStatus::WaitingReply => {
-                    println!("Waiting reply");
+                    info!("Waiting reply...");
                     let response = self.output_receiver.recv().unwrap();
-                    println!("---- input_handler response -> {:?}", response);
+                    info!("Input handler response -> {:?}", response);
                     match response {
                         ClientMessage::ErrorResponse(ErrorMessage::LockNotAcquiredError) => {
                             let event = ClientEvent::UserInput {
@@ -127,15 +127,15 @@ impl InputProcessor {
                             self.message_sender.send(event).ok();
                         }
                         ClientMessage::ErrorResponse(error) => {
-                            println!("Error: {:?}", error);
-                            println!("Retrying....");
+                            error!("Error: {:?}", error);
+                            error!("Retrying....");
                             status = ClientStatus::SendCommand;
                         }
                     }
                 }
             }
         }
-        println!("Saliendo de la aplicación");
+        error!("Saliendo de la aplicación");
     }
 }
 enum ClientStatus {

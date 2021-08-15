@@ -48,7 +48,7 @@ impl Peer {
             let event = ClientEvent::PeerMessage { message, peer_id };
             sender.send(event)?;
         }
-        println!("No more events from {}", peer_id);
+        warn!("No more events from {}", peer_id);
         sender.send(ClientEvent::PeerDisconnected { peer_id })?;
         Ok(())
     }

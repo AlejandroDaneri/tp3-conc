@@ -43,7 +43,7 @@ impl PeerProcessor {
     }
     pub fn process(&mut self) -> io::Result<()> {
         for event in self.receiver.iter() {
-            println!("PH: Processing event: {:?}", event);
+            debug!("Peer handler: Processing event: {:?}", event);
             match event {
                 ClientEvent::Connection { mut stream } => {
                     let peer_pid = PeerHandler::exchange_pids(self.own_id, &mut stream)?;
@@ -55,7 +55,7 @@ impl PeerProcessor {
                 }
                 ClientEvent::PeerDisconnected { peer_id } => {
                     self.connected_peers.remove(&peer_id);
-                    println!("Peer {} removed", peer_id);
+                    warn!("Peer {} removed", peer_id);
                     let message = LeaderMessage::PeerDisconnected;
                     self.leader_handler_sender.send((message, peer_id)).ok();
                 }
@@ -82,13 +82,13 @@ impl PeerProcessor {
                 Some(peer) => {
                     let sent = peer.send_message(Message::Common(inner));
                     if sent.is_err() {
-                        println!("Peer {} disconnected!", peer_id);
+                        warn!("Peer {} disconnected!", peer_id);
                         let message = LeaderMessage::PeerDisconnected;
                         self.leader_handler_sender.send((message, peer_id)).ok();
                     }
                 }
                 None => {
-                    println!("[{}] Peer not found: {}", self.own_id, peer_id);
+                    warn!("[{}] Peer not found: {}", self.own_id, peer_id);
                     if peer_id != self.own_id {
                         let message = LeaderMessage::PeerDisconnected;
                         self.leader_handler_sender.send((message, peer_id)).ok();
@@ -103,7 +103,7 @@ impl PeerProcessor {
                         .iter()
                         .filter(|(&peer_id, _)| peer_id > self.own_id)
                         .for_each(|(peer_id, peer)| {
-                            println!("Pidiendo ser lider a {}", peer_id);
+                            info!("Pidiendo ser lider a {}", peer_id);
                             let msg = Message::Leader(LeaderMessage::LeaderElectionRequest {
                                 timestamp: SystemTime::now(),
                             });
@@ -114,13 +114,13 @@ impl PeerProcessor {
                     if let Some(peer) = self.connected_peers.get(&peer_id) {
                         let sent = peer.send_message(Message::Leader(message));
                         if sent.is_err() {
-                            println!("Peer {} disconnected!", peer_id);
+                            warn!("Peer {} disconnected!", peer_id);
                         }
                     }
                 }
                 LeaderMessage::VictoryMessage {} => {
                     for (peer_id, peer) in self.connected_peers.iter() {
-                        println!("Send victory to {}!", peer_id);
+                        info!("Send victory to {}!", peer_id);
                         peer.send_message(Message::Leader(LeaderMessage::VictoryMessage {}))
                             .ok();
                     }
@@ -131,7 +131,7 @@ impl PeerProcessor {
                 if let Some(peer) = self.connected_peers.get(&peer_id) {
                     let sent = peer.send_message(Message::Lock(inner));
                     if sent.is_err() {
-                        println!("Peer {} disconnected!", peer_id);
+                        warn!("Peer {} disconnected!", peer_id);
                         let message = LeaderMessage::PeerDisconnected;
                         self.leader_handler_sender.send((message, peer_id)).ok();
                     }

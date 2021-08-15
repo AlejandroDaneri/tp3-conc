@@ -92,7 +92,7 @@ impl LeaderProcessor {
                 Ok((message, peer_id)) => {
                     let (mutex, cv) = &*leader_election_notify;
                     if let Ok(mut leader_busy) = mutex.lock() {
-                        println!("Leader message from {}: {:?}", peer_id, message);
+                        debug!("Leader message from {}: {:?}", peer_id, message);
                         self.process_message(message, peer_id);
                         *leader_busy = true;
                     }
@@ -144,7 +144,7 @@ impl LeaderProcessor {
             LeaderMessage::OkMessage => self.waiting_coordinator = true,
             // Alguien de pid mayor salió lider electo democráticamente, todos amamos al lider
             LeaderMessage::VictoryMessage {} => {
-                println!(
+                info!(
                     "new leader: {}, initiated by me: {}",
                     peer_id, self.election_by_user
                 );
@@ -158,7 +158,7 @@ impl LeaderProcessor {
                 self.waiting_coordinator = false;
             }
             LeaderMessage::CurrentLeaderLocal { response_sender } => {
-                println!("Current leader: {}", self.current_leader);
+                debug!("Current leader: {}", self.current_leader);
                 response_sender.send(self.current_leader).unwrap();
             }
             LeaderMessage::PeerDisconnected => {
@@ -190,7 +190,7 @@ impl LeaderProcessor {
     fn run_election(&mut self, _message: LeaderMessage, peer_id: PeerIdType) {
         self.election_in_progress = true;
         // Viene desde un comando de usuario
-        println!("Election by {}", peer_id);
+        info!("Election by {}", peer_id);
         if peer_id == 0 {
             let message = Message::Leader(LeaderMessage::LeaderElectionRequest {
                 timestamp: SystemTime::now(),
@@ -201,14 +201,14 @@ impl LeaderProcessor {
                 .ok();
         } else {
             let message = Message::Leader(LeaderMessage::OkMessage);
-            println!("Mando a peer {:?}", message);
+            debug!("Mando a peer {:?}", message);
             self.peer_handler_sender
                 .send(ClientEvent::PeerMessage { message, peer_id })
                 .ok();
             let message = Message::Leader(LeaderMessage::LeaderElectionRequest {
                 timestamp: SystemTime::now(),
             });
-            println!("Mando LE");
+            debug!("Mando LE");
             self.peer_handler_sender
                 .send(ClientEvent::PeerMessage { message, peer_id })
                 .ok();
