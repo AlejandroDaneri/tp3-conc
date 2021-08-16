@@ -9,7 +9,7 @@ use crate::handler::leader_handler::LeaderHandler;
 use crate::handler::message_handler::MessageHandler;
 use crate::handler::peer_handler::PeerHandler;
 
-use crate::blockchain::lock::CentralizedLock;
+use crate::blockchain::lock::{CentralizedLock, Lock};
 use crate::communication::client_event::LeaderMessage;
 use crate::handler::lock_handler::LockHandler;
 use std::io::Read;
@@ -131,20 +131,18 @@ impl Client {
                             })?;
                         }
                         LockMessage::Release => {
-                            println!("TODO: IMPLEMENTAR RELEASE");
-                            println!("TODO: IMPLEMENTAR RELEASE");
-                            println!("TODO: IMPLEMENTAR RELEASE");
-                            println!("TODO: IMPLEMENTAR RELEASE");
-                            println!("TODO: IMPLEMENTAR RELEASE");
-                            let (_, cv) = lock_notify.deref();
-
-                            cv.notify_all();
+                            let (guard, cv) = lock_notify.deref();
+                            if let Ok(mut lock) = guard.lock() {
+                                lock.release(peer_id);
+                                cv.notify_all();
+                            }
                         }
                     },
                 },
                 ClientEvent::UserInput { message } => match &message {
                     Message::Common(inner) => {
                         let leader_id = Client::retrieve_leader(&leader_sender);
+                        debug!("Leader retrieved");
                         if leader_id != self.id {
                             let event = ClientEvent::PeerMessage {
                                 message,

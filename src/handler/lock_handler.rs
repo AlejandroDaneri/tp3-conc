@@ -57,12 +57,13 @@ impl LockProcessor {
             let (mutex, cv) = self.lock_notify.deref();
             let acquired;
             if let Ok(leader_lock) = mutex.lock() {
-                println!("Taking CV...");
+                debug!("Taking CV...");
                 let timeout = Duration::from_secs(leader_lock.get_duration());
                 match cv.wait_timeout_while(leader_lock, timeout, |lock| lock.is_owned_by(peer_id))
                 {
                     Ok(mut guard) => {
                         acquired = guard.0.acquire(peer_id) == LockResult::Acquired;
+                        debug!("wait_timeout: {}", acquired);
                     }
                     _ => acquired = false,
                 }

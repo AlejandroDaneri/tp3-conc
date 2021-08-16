@@ -10,6 +10,7 @@ use crate::communication::serialization::Serializable;
 pub enum ClientEvent {
     Connection {
         stream: TcpStream,
+        incoming: bool,
     },
     PeerMessage {
         message: Message,
@@ -52,12 +53,12 @@ impl Serializable for Message {
     }
 
     fn deserialize(line: &str) -> Option<Self> {
-        if let Some(message) = ClientMessage::deserialize(&line) {
+        if let Some(message) = ClientMessage::deserialize(line) {
             Some(Message::Common(message))
-        } else if let Some(message) = LeaderMessage::deserialize(&line) {
+        } else if let Some(message) = LeaderMessage::deserialize(line) {
             Some(Message::Leader(message))
         } else {
-            let message = LockMessage::deserialize(&line)?;
+            let message = LockMessage::deserialize(line)?;
             Some(Message::Lock(message))
         }
     }

@@ -1,5 +1,5 @@
 use std::sync::mpsc::{RecvTimeoutError, Sender};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime};
 use std::{io, sync::mpsc::Receiver, thread};
 
@@ -74,6 +74,7 @@ impl LeaderProcessor {
     }
 
     fn notify_victory(&self) {
+        info!("Victory!");
         let message = Message::Leader(LeaderMessage::VictoryMessage);
         self.peer_handler_sender
             .send(ClientEvent::PeerMessage {
@@ -82,6 +83,7 @@ impl LeaderProcessor {
             })
             .ok();
     }
+
     pub fn run(
         &mut self,
         receiver: Receiver<(LeaderMessage, PeerIdType)>,
@@ -90,11 +92,10 @@ impl LeaderProcessor {
         loop {
             match receiver.recv_timeout(LEADER_ELECTION_TIMEOUT) {
                 Ok((message, peer_id)) => {
+                    debug!("Leader message from {}: {:?}", peer_id, message);
                     let (mutex, cv) = &*leader_election_notify;
                     if let Ok(mut leader_busy) = mutex.lock() {
-                        debug!("Leader message from {}: {:?}", peer_id, message);
-                        self.process_message(message, peer_id);
-                        *leader_busy = true;
+                        self.process_message(message, peer_id, &mut leader_busy);
                     }
                     cv.notify_all();
                 }
@@ -102,6 +103,7 @@ impl LeaderProcessor {
                     let (mutex, cv) = &*leader_election_notify;
                     // Si había una elección, se termina
                     if self.election_in_progress {
+                        debug!("Election timed out");
                         self.election_in_progress = false;
                         // Ningún mayor me dijo Ok
                         if !self.waiting_coordinator {
@@ -134,11 +136,17 @@ impl LeaderProcessor {
         Ok(())
     }
 
-    fn process_message(&mut self, message: LeaderMessage, peer_id: PeerIdType) {
+    fn process_message(
+        &mut self,
+        message: LeaderMessage,
+        peer_id: PeerIdType,
+        leader_busy: &mut MutexGuard<bool>,
+    ) {
         match message {
             // Un proceso de pid menor quiere ser lider
             LeaderMessage::LeaderElectionRequest { .. } => {
                 self.run_election(message, peer_id);
+                **leader_busy = true;
             }
             // Alguien de pid mayor me dijo "Ok", así que espero el victory
             LeaderMessage::OkMessage => self.waiting_coordinator = true,

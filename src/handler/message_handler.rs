@@ -55,6 +55,7 @@ impl MessageHandler {
         for (message, peer_id) in message_receiver {
             MessageHandler::wait_leader_election(&leader_notify);
             if let Some(response) = processor.process_message(message, peer_id) {
+                info!("Sending response to {}: {:?}", peer_id, response);
                 peer_sender
                     .send(ClientEvent::PeerMessage {
                         message: Message::Common(response),
@@ -68,7 +69,7 @@ impl MessageHandler {
                     })?;
             }
         }
-        println!("Saliendo del hilo de mensajes");
+        warn!("Saliendo del hilo de mensajes");
         Ok(())
     }
 
@@ -76,7 +77,9 @@ impl MessageHandler {
         let (mutex, cv) = leader_notify.deref();
         if let Ok(leader_lock) = mutex.lock() {
             let _guard = cv
-                .wait_while(leader_lock, |leader_busy| *leader_busy)
+                .wait_while(leader_lock, |leader_busy| {
+                    *leader_busy
+                })
                 .unwrap();
         }
     }
@@ -112,7 +115,7 @@ impl MessageProcessor {
         peer_id: u32,
     ) -> Option<ClientMessage> {
         let redirect = message.clone();
-        println!("process_message: {:?}", message);
+        debug!("Processing: {:?}", message);
         match message {
             ClientMessage::ReadBlockchainRequest {} => {
                 Some(ClientMessage::ReadBlockchainResponse {

@@ -33,7 +33,10 @@ impl ConnectionHandler {
         own_port: u16,
     ) -> io::Result<()> {
         for stream in ConnectionHandler::broadcast(own_port, port_from, port_to) {
-            let event = ClientEvent::Connection { stream };
+            let event = ClientEvent::Connection {
+                stream,
+                incoming: false,
+            };
             client_sender.send(event).unwrap();
         }
         Ok(())
@@ -69,7 +72,10 @@ impl ConnectionHandler {
     ) -> io::Result<()> {
         for connection in listener.incoming() {
             let stream = connection?;
-            let event = ClientEvent::Connection { stream };
+            let event = ClientEvent::Connection {
+                stream,
+                incoming: true,
+            };
             client_sender.send(event).unwrap();
         }
         Ok(())

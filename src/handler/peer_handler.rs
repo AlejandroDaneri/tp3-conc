@@ -45,11 +45,16 @@ impl PeerProcessor {
         for event in self.receiver.iter() {
             debug!("Peer handler: Processing event: {:?}", event);
             match event {
-                ClientEvent::Connection { mut stream } => {
+                ClientEvent::Connection {
+                    mut stream,
+                    incoming,
+                } => {
                     let peer_pid = PeerHandler::exchange_pids(self.own_id, &mut stream)?;
-                    self.leader_handler_sender
-                        .send((LeaderMessage::SendLeaderId {}, peer_pid))
-                        .ok();
+                    if !incoming {
+                        self.leader_handler_sender
+                            .send((LeaderMessage::SendLeaderId {}, peer_pid))
+                            .ok();
+                    }
                     let peer = Peer::new(peer_pid, stream, self.sender.clone());
                     self.connected_peers.insert(peer_pid, peer);
                 }
@@ -65,6 +70,7 @@ impl PeerProcessor {
                 ClientEvent::UserInput { .. } => unreachable!(),
             }
         }
+        warn!("Peer handler finished");
         Ok(())
     }
 
@@ -184,12 +190,14 @@ impl PeerHandler {
     }
 
     fn exchange_pids(own_id: PeerIdType, stream: &mut TcpStream) -> io::Result<u32> {
+        debug!("Exchanging pids with new connection");
         let pid_msg = format!("{}\n", own_id);
         stream.write_all(pid_msg.as_bytes())?;
         let mut buf_reader = BufReader::new(stream);
         let mut client_pid = String::new();
         buf_reader.read_line(&mut client_pid)?;
         client_pid.pop();
+        debug!("Pid exchanged with {}", client_pid);
         u32::from_str(&client_pid)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "bad client pid"))
     }
