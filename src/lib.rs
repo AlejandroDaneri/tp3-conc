@@ -3,10 +3,10 @@
 pub mod macros {
     macro_rules! print_fmt {
         ($suffix:expr, $fmt:expr) => (
-            println!(concat!($suffix, " {}]\x1B[0m(", file!(), ":", line!(), ")\x1B[0m ", $fmt))
+            println!(concat!($suffix, " ]\x1B[0m(", file!(), ":", line!(), ")\x1B[0m ", $fmt))
         );
         ($suffix:expr, $fmt:expr, $($arg:tt)*) => (
-            println!(concat!($suffix, " {}]\x1B[0m(", file!(), ":", line!(), ")\x1B[0m ", $fmt), $($arg)*)
+            println!(concat!($suffix, " ]\x1B[0m(", file!(), ":", line!(), ")\x1B[0m ", $fmt), $($arg)*)
         );
     }
     macro_rules! debug {
