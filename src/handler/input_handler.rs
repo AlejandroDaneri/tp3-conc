@@ -1,60 +1,25 @@
 use crate::communication::client_event::{ClientEvent, ClientMessage, ErrorMessage};
 use crate::communication::client_event::{LockMessage, Message};
 use crate::communication::commands::UserCommand;
+use crate::communication::dispatcher::Dispatcher;
 use crate::communication::serialization::LineReader;
 use std::io::Read;
-use std::sync::mpsc::{Receiver, Sender};
-use std::thread;
-
-#[derive(Debug)]
-pub struct InputHandler {
-    thread_handle: Option<thread::JoinHandle<()>>,
-}
-
-impl InputHandler {
-    pub fn new<R: 'static + Read + Send>(
-        source: R,
-        input_sender: Sender<ClientEvent>,
-        output_receiver: Receiver<ClientMessage>,
-    ) -> Self {
-        let thread_handle = Some(thread::spawn(move || {
-            InputHandler::run(source, input_sender, output_receiver);
-        }));
-        InputHandler { thread_handle }
-    }
-
-    fn run<R: 'static + Read + Send>(
-        source: R,
-        message_sender: Sender<ClientEvent>,
-        output_receiver: Receiver<ClientMessage>,
-    ) {
-        let processor = InputProcessor::new(message_sender, output_receiver);
-        processor.run(source);
-    }
-}
-
-impl Drop for InputHandler {
-    fn drop(&mut self) {
-        let _ = self.thread_handle.take().unwrap().join();
-    }
-}
+use std::sync::mpsc::Receiver;
 
 pub struct InputProcessor {
-    message_sender: Sender<ClientEvent>,
     output_receiver: Receiver<ClientMessage>,
+    dispatcher: Dispatcher,
 }
 
 impl InputProcessor {
-    pub fn new(
-        message_sender: Sender<ClientEvent>,
-        output_receiver: Receiver<ClientMessage>,
-    ) -> Self {
+    pub fn new(output_receiver: Receiver<ClientMessage>, dispatcher: Dispatcher) -> Self {
         InputProcessor {
-            message_sender,
             output_receiver,
+            dispatcher,
         }
     }
-    fn run<R: Read>(&self, source: R) {
+
+    pub fn run<R: Read>(&self, source: R) {
         let mut command_reader = LineReader::<R, UserCommand>::new(source);
         let mut status = ClientStatus::Idle;
         let mut current_command = None;
@@ -81,7 +46,7 @@ impl InputProcessor {
                         }
                     }
                     let event = ClientEvent::UserInput { message };
-                    self.message_sender.send(event).ok();
+                    self.dispatcher.dispatch(event).ok();
                     status = ClientStatus::WaitingReply;
                 }
                 ClientStatus::WaitingReply => {
@@ -93,7 +58,7 @@ impl InputProcessor {
                             let event = ClientEvent::UserInput {
                                 message: Message::Lock(LockMessage::Acquire),
                             };
-                            self.message_sender.send(event).ok();
+                            self.dispatcher.dispatch(event).ok();
                         }
                         ClientMessage::LockResponse(true) => {
                             status = ClientStatus::SendCommand;
@@ -104,7 +69,7 @@ impl InputProcessor {
                                 status = ClientStatus::Idle;
                             }
                         }
-                        ClientMessage::WriteBlockchainResponse {} => {
+                        ClientMessage::WriteBlockchainResponse { .. } => {
                             if let Some(UserCommand::WriteBlockchain(_)) = current_command {
                                 println!("Write blockchain exitoso");
                                 status = ClientStatus::Idle;
@@ -112,7 +77,7 @@ impl InputProcessor {
                             let event = ClientEvent::UserInput {
                                 message: Message::Lock(LockMessage::Release),
                             };
-                            self.message_sender.send(event).ok();
+                            self.dispatcher.dispatch(event).ok();
                         }
                         ClientMessage::ReadBlockchainRequest => todo!(),
                         ClientMessage::WriteBlockchainRequest { transaction: _ } => todo!(),
@@ -124,7 +89,7 @@ impl InputProcessor {
                             let event = ClientEvent::UserInput {
                                 message: Message::Lock(LockMessage::Acquire),
                             };
-                            self.message_sender.send(event).ok();
+                            self.dispatcher.dispatch(event).ok();
                         }
                         ClientMessage::ErrorResponse(error) => {
                             error!("Error: {:?}", error);

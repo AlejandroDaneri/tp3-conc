@@ -69,7 +69,7 @@ pub enum ClientMessage {
     ReadBlockchainRequest,
     ReadBlockchainResponse { blockchain: Blockchain },
     WriteBlockchainRequest { transaction: Transaction },
-    WriteBlockchainResponse {},
+    WriteBlockchainResponse { transaction: Transaction },
     LockResponse(bool),
     LeaderElectionFinished,
     ErrorResponse(ErrorMessage),
@@ -92,7 +92,9 @@ impl Serializable for ClientMessage {
             ClientMessage::WriteBlockchainRequest { transaction } => {
                 format!("wb {}\n", transaction.serialize())
             }
-            ClientMessage::WriteBlockchainResponse {} => "wb_response\n".to_owned(),
+            ClientMessage::WriteBlockchainResponse { transaction } => {
+                format!("wb_response {}\n", transaction.serialize())
+            }
             ClientMessage::LockResponse(acquired) => {
                 if *acquired {
                     "lock_ok\n".to_owned()
@@ -121,7 +123,7 @@ impl Serializable for ClientMessage {
         match action {
             Some("rb") => Some(ClientMessage::ReadBlockchainRequest {}),
             Some("wb") => ClientMessage::parse_write_blockchain(&mut tokens),
-            Some("wb_response") => Some(ClientMessage::WriteBlockchainResponse {}),
+            Some("wb_response") => ClientMessage::parse_write_response(&mut tokens),
             Some("lock_failed") => Some(ClientMessage::LockResponse(false)),
             Some("lock_ok") => Some(ClientMessage::LockResponse(true)),
             Some("blockchain") => ClientMessage::parse_blockchain(&mut tokens),
@@ -135,6 +137,11 @@ impl ClientMessage {
     fn parse_write_blockchain(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
         let transaction = Transaction::parse(tokens)?;
         Some(ClientMessage::WriteBlockchainRequest { transaction })
+    }
+
+    fn parse_write_response(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {
+        let transaction = Transaction::parse(tokens)?;
+        Some(ClientMessage::WriteBlockchainResponse { transaction })
     }
 
     fn parse_blockchain(tokens: &mut dyn Iterator<Item = &str>) -> Option<ClientMessage> {

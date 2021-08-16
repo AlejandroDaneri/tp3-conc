@@ -6,6 +6,7 @@ use std::thread;
 
 use crate::communication::client_event::ClientEvent;
 use crate::communication::client_event::Message;
+use crate::communication::dispatcher::Dispatcher;
 use crate::communication::serialization::LineReader;
 
 pub type PeerIdType = u32;
@@ -19,12 +20,12 @@ pub struct Peer {
 }
 
 impl Peer {
-    pub fn new(id: u32, stream: TcpStream, sender: Sender<ClientEvent>) -> Self {
+    pub fn new(id: u32, stream: TcpStream, dispatcher: Dispatcher) -> Self {
         let stream_clone = stream.try_clone().unwrap();
         let (local_sender, receiver) = channel();
 
         let recv_thread = Some(thread::spawn(move || {
-            Peer::recv_messages(id, stream, sender).unwrap();
+            Peer::recv_messages(id, stream, dispatcher).unwrap();
         }));
 
         let send_thread = Some(thread::spawn(move || {
@@ -41,15 +42,15 @@ impl Peer {
     fn recv_messages(
         peer_id: u32,
         stream: TcpStream,
-        sender: Sender<ClientEvent>,
+        dispatcher: Dispatcher,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let message_reader = LineReader::new(stream);
         for message in message_reader {
             let event = ClientEvent::PeerMessage { message, peer_id };
-            sender.send(event)?;
+            dispatcher.dispatch(event)?;
         }
         warn!("No more events from {}", peer_id);
-        sender.send(ClientEvent::PeerDisconnected { peer_id })?;
+        dispatcher.dispatch(ClientEvent::PeerDisconnected { peer_id })?;
         Ok(())
     }
 

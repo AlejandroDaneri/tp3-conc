@@ -1,8 +1,8 @@
 use std::io;
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::mpsc::Sender;
 
 use crate::communication::client_event::ClientEvent;
+use crate::communication::dispatcher::Dispatcher;
 use std::thread;
 
 #[derive(Debug)]
@@ -11,33 +11,33 @@ pub struct ConnectionHandler {
 }
 
 impl ConnectionHandler {
-    pub fn new(client_sender: Sender<ClientEvent>, port_from: u16, port_to: u16) -> Self {
+    pub fn new(port_from: u16, port_to: u16, dispatcher: Dispatcher) -> Self {
         let thread_handle = Some(thread::spawn(move || {
-            ConnectionHandler::run(client_sender, port_from, port_to).unwrap();
+            ConnectionHandler::run(port_from, port_to, dispatcher).unwrap();
         }));
         ConnectionHandler { thread_handle }
     }
 
-    fn run(client_sender: Sender<ClientEvent>, port_from: u16, port_to: u16) -> io::Result<()> {
+    fn run(port_from: u16, port_to: u16, dispatcher: Dispatcher) -> io::Result<()> {
         let listener = ConnectionHandler::listen_in_range(port_from, port_to)?;
         let own_port: u16 = listener.local_addr()?.port();
-        ConnectionHandler::do_broadcasting(port_from, port_to, &client_sender, own_port)?;
-        ConnectionHandler::listen_to_incoming(client_sender, listener)?;
+        ConnectionHandler::do_broadcasting(port_from, port_to, own_port, &dispatcher)?;
+        ConnectionHandler::listen_to_incoming(listener, &dispatcher)?;
         Ok(())
     }
 
     fn do_broadcasting(
         port_from: u16,
         port_to: u16,
-        client_sender: &Sender<ClientEvent>,
         own_port: u16,
+        dispatcher: &Dispatcher,
     ) -> io::Result<()> {
         for stream in ConnectionHandler::broadcast(own_port, port_from, port_to) {
             let event = ClientEvent::Connection {
                 stream,
                 incoming: false,
             };
-            client_sender.send(event).unwrap();
+            dispatcher.dispatch(event).unwrap();
         }
         Ok(())
     }
@@ -66,17 +66,14 @@ impl ConnectionHandler {
         }
     }
 
-    fn listen_to_incoming(
-        client_sender: Sender<ClientEvent>,
-        listener: TcpListener,
-    ) -> io::Result<()> {
+    fn listen_to_incoming(listener: TcpListener, dispatcher: &Dispatcher) -> io::Result<()> {
         for connection in listener.incoming() {
             let stream = connection?;
             let event = ClientEvent::Connection {
                 stream,
                 incoming: true,
             };
-            client_sender.send(event).unwrap();
+            dispatcher.dispatch(event).unwrap();
         }
         Ok(())
     }
