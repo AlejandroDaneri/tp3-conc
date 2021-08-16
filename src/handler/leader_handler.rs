@@ -174,7 +174,7 @@ impl LeaderProcessor {
                     self.run_election(message, peer_id);
                 }
             }
-            LeaderMessage::SendLeaderId => {
+            LeaderMessage::SendWelcome => {
                 if self.current_leader == self.own_id {
                     self.peer_handler_sender
                         .send(ClientEvent::PeerMessage {

@@ -71,7 +71,7 @@ impl InputProcessor {
                         }
                         ClientMessage::WriteBlockchainResponse { .. } => {
                             if let Some(UserCommand::WriteBlockchain(_)) = current_command {
-                                println!("Write blockchain exitoso");
+                                info!("Write blockchain exitoso");
                                 status = ClientStatus::Idle;
                             }
                             let event = ClientEvent::UserInput {

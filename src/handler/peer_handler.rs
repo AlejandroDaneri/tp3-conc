@@ -44,15 +44,12 @@ impl PeerProcessor {
                     mut stream,
                     incoming,
                 } => {
-                    let peer_pid = PeerHandler::exchange_pids(self.own_id, &mut stream)?;
+                    let peer_id = PeerHandler::exchange_pids(self.own_id, &mut stream)?;
                     if !incoming {
-                        self.dispatcher
-                            .leader_sender
-                            .send((LeaderMessage::SendLeaderId {}, peer_pid))
-                            .ok();
+                        PeerHandler::send_initial_data(&self.dispatcher, peer_id);
                     }
-                    let peer = Peer::new(peer_pid, stream, self.dispatcher.clone());
-                    self.connected_peers.insert(peer_pid, peer);
+                    let peer = Peer::new(peer_id, stream, self.dispatcher.clone());
+                    self.connected_peers.insert(peer_id, peer);
                 }
                 ClientEvent::PeerDisconnected { peer_id } => {
                     self.connected_peers.remove(&peer_id);
@@ -178,6 +175,21 @@ impl PeerHandler {
         debug!("Pid exchanged with {}", client_pid);
         u32::from_str(&client_pid)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "bad client pid"))
+    }
+
+    fn send_initial_data(dispatcher: &Dispatcher, peer_id: PeerIdType) {
+        info!("New peer, sending welcome");
+        dispatcher
+            .leader_sender
+            .send((LeaderMessage::SendWelcome {}, peer_id))
+            .ok();
+        dispatcher
+            .peer_sender
+            .send(ClientEvent::PeerMessage {
+                message: Message::Common(ClientMessage::ReadBlockchainRequest),
+                peer_id,
+            })
+            .ok();
     }
 }
 

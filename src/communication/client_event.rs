@@ -169,7 +169,7 @@ pub enum LeaderMessage {
     OkMessage,
     VictoryMessage,
     PeerDisconnected,
-    SendLeaderId,
+    SendWelcome,
     BroadcastBlockchain { blockchain: Blockchain },
 }
 
@@ -186,7 +186,7 @@ impl LeaderMessage {
             LeaderMessage::OkMessage {} => "ok\n".to_owned(),
             LeaderMessage::VictoryMessage {} => "coordinator\n".to_owned(),
             LeaderMessage::PeerDisconnected => unreachable!(),
-            LeaderMessage::SendLeaderId => unreachable!(),
+            LeaderMessage::SendWelcome => unreachable!(),
             LeaderMessage::BroadcastBlockchain { blockchain: _ } => unreachable!(),
         }
     }

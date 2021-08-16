@@ -77,7 +77,6 @@ impl Dispatcher {
             ClientEvent::UserInput { message } => match &message {
                 Message::Common(inner) => {
                     let leader_id = Dispatcher::retrieve_leader(&self.leader_sender);
-                    debug!("Leader retrieved");
                     if leader_id != self.id {
                         let event = ClientEvent::PeerMessage {
                             message,
