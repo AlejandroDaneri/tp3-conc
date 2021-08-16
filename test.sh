@@ -4,13 +4,13 @@ declare -A process_map
 
 function launch_process() {
 	$APP < input_$1.fifo > output_$1.txt &
-	#sleep $2
+	sleep $2
 	new_pid=$!
 	echo "Launched $1: $new_pid"
 	process_map[$1]=$new_pid
 }
 
-cargo build
+cargo build --no-default-features
 
 mkfifo input_a.fifo
 mkfifo input_b.fifo
@@ -28,7 +28,7 @@ echo "wb insert p 2"
 launch_process a 0
 launch_process b 1
 
-multitail -s 2 -cT ANSI output_a.txt -cT ANSI output_b.txt
+multitail -F blockchain.multitail.conf -CS blockchain -s 2 output_a.txt output_b.txt
 
 echo "killing blockchain processes"
 killall blockchain
