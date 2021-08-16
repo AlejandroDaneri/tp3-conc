@@ -7,7 +7,7 @@ use crate::communication::dispatcher::Dispatcher;
 use crate::handler::connection_handler::ConnectionHandler;
 use crate::handler::input_handler::InputProcessor;
 use crate::handler::leader_handler::LeaderHandler;
-use crate::handler::lock_handler::LockHandler;
+use crate::handler::lock_handler::LockProcessor;
 use crate::handler::message_handler::MessageHandler;
 use crate::handler::peer_handler::PeerHandler;
 use std::io::Read;
@@ -31,7 +31,6 @@ impl Client {
         port_to: u16,
     ) -> io::Result<()> {
         let (leader_handler_sender, leader_handler_receiver) = channel();
-        let (lock_handler_sender, lock_handler_receiver) = channel();
         let (peer_handler_sender, peer_handler_receiver) = channel();
         let (message_handler_sender, message_handler_receiver) = channel();
         let (output_sender, output_receiver) = channel();
@@ -47,20 +46,15 @@ impl Client {
 
         let lock = CentralizedLock::new();
         let lock_notify = Arc::new((Mutex::new(lock), Condvar::new()));
-        let lock_handler = LockHandler::new(
-            lock_handler_receiver,
-            peer_handler_sender.clone(),
-            lock_notify.clone(),
-        );
+        let lock_handler = LockProcessor::new(peer_handler_sender.clone(), lock_notify.clone());
 
         let dispatcher = Dispatcher::new(
             self.id,
             peer_handler_sender,
             message_handler_sender,
             leader_handler_sender.clone(),
-            lock_handler_sender,
             output_sender.clone(),
-            lock_notify,
+            lock_handler,
         );
 
         let connection_handler = ConnectionHandler::new(port_from, port_to, dispatcher.clone());
@@ -82,7 +76,6 @@ impl Client {
         drop(input_handler);
         drop(message_handler);
         drop(leader_handler);
-        drop(lock_handler);
 
         Ok(())
     }

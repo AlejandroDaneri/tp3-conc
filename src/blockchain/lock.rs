@@ -1,6 +1,6 @@
 use crate::blockchain::lock::LockResult::{Acquired, Locked, ReleaseFailed, Released};
 use crate::blockchain::peer::PeerIdType;
-use std::time::SystemTime;
+use std::time::{SystemTime, Duration};
 
 const LOCK_EXPIRATION_TIME: u64 = 5;
 
@@ -19,11 +19,13 @@ pub trait Lock {
 
     fn reset(&mut self);
 
+    fn is_used(&self) -> bool;
+
     fn is_owned_by(&self, peer_id: PeerIdType) -> bool;
 
     fn lock_expired(&self) -> bool;
 
-    fn get_duration(&self) -> u64;
+    fn get_duration(&self) -> Duration;
 }
 
 #[derive(Debug)]
@@ -36,7 +38,7 @@ pub struct CentralizedLock {
 impl Lock for CentralizedLock {
     //envio pedido de acquire al coordinador
     fn acquire(&mut self, peer_id: PeerIdType) -> LockResult {
-        if self.peer_id.is_none() || self.lock_expired() {
+        if self.is_used() {
             self.peer_id = Some(peer_id);
             self.lock_time = SystemTime::now();
             Acquired
@@ -59,6 +61,10 @@ impl Lock for CentralizedLock {
         self.peer_id = None;
     }
 
+    fn is_used(&self) -> bool {
+        self.peer_id.is_none() || self.lock_expired()
+    }
+
     fn is_owned_by(&self, peer_id: PeerIdType) -> bool {
         self.peer_id == Some(peer_id) && !self.lock_expired()
     }
@@ -71,8 +77,8 @@ impl Lock for CentralizedLock {
         }
     }
 
-    fn get_duration(&self) -> u64 {
-        self.expiration_time
+    fn get_duration(&self) -> Duration {
+        Duration::from_secs(self.expiration_time)
     }
 }
 

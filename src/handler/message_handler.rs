@@ -1,16 +1,15 @@
 use std::io;
+use std::ops::Deref;
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Condvar, Mutex};
+use std::thread;
 
 use crate::blockchain::blockchain::Blockchain;
-use crate::blockchain::lock::Lock;
 use crate::blockchain::peer::PeerIdType;
 use crate::communication::client_event::{
     ClientEvent, ClientMessage, ErrorMessage, LeaderMessage, Message,
 };
 use crate::communication::dispatcher::Dispatcher;
-use std::ops::Deref;
-use std::thread;
 
 #[derive(Debug)]
 pub struct MessageHandler {
@@ -103,14 +102,11 @@ impl MessageProcessor {
                 None
             }
             ClientMessage::WriteBlockchainRequest { transaction } => {
-                if let Ok(guard) = self.dispatcher.lock_notify.0.lock() {
-                    let owned = guard.is_owned_by(peer_id);
-                    println!("WriteBlockchain... lock owned? {}", owned);
-                    if !owned {
-                        return Some(ClientMessage::ErrorResponse(
-                            ErrorMessage::LockNotAcquiredError,
-                        ));
-                    }
+                let owned = self.is_lock_owned_by(peer_id);
+                if !owned {
+                    return Some(ClientMessage::ErrorResponse(
+                        ErrorMessage::LockNotAcquiredError,
+                    ));
                 }
                 if self.is_leader() {
                     let _valid = self.blockchain.validate(&transaction);
@@ -135,7 +131,7 @@ impl MessageProcessor {
                 None
             }
             ClientMessage::LockResponse { .. } => {
-                println!("Obtuve lock? {:?}", message);
+                info!("Obtuve lock? {:?}", message);
                 self.dispatcher.output_sender.send(message).ok()?;
                 None
             }
@@ -156,6 +152,10 @@ impl MessageProcessor {
 
     fn is_leader(&self) -> bool {
         self.id == self.retrieve_leader()
+    }
+
+    fn is_lock_owned_by(&self, peer_id: PeerIdType) -> bool {
+        self.dispatcher.is_lock_owned_by(peer_id)
     }
 
     fn retrieve_leader(&self) -> PeerIdType {
